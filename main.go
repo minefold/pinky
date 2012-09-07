@@ -4,7 +4,7 @@ import (
   	"fmt"
 	"log"
   	"os"
-  	"redis"
+  	"github.com/alphazero/Go-Redis"
 )
 
 func popRedisQueue(c chan string, client redis.Client, queue string) {
