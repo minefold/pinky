@@ -58,13 +58,15 @@ func startServerProcess(dest string) {
 }
 
 func startWorld(job Job, dest string) {
-	if (acquireServerLock(job.ServerId)) {
+	if (attemptStartingTransition(job.ServerId)) {
 		fmt.Println("Starting world", job.ServerId)
 		
 		downloadFunpack(job.WorldId, dest)
 		downloadWorld(job.WorldId, dest)
 		startServerProcess(dest)
-		// update state to up
+		transitionStartingToUp(job.ServerId)
+		// monitor(job.ServerId)
+
 	} else {
 		fmt.Println("Ignoring start request")
 	}
@@ -86,12 +88,10 @@ func createRedisClient(database int) (client redis.Client) {
 
 var state = map[string] string {}
 
-func acquireServerLock(serverId string) bool {
+func attemptStartingTransition(serverId string) bool {
 	// redis: state/1
 	
-	lock := state[serverId]
-	fmt.Println(lock)
-	if lock == 0 {
+	if state[serverId] == "" {
 		state[serverId] = "starting"
 		return true
 	} else {
@@ -99,6 +99,15 @@ func acquireServerLock(serverId string) bool {
 	}
 	// what the shit!?
 	return true
+}
+
+func transitionStartingToUp(serverId string) {
+	if state[serverId] == "starting" {
+		state[serverId] = "up"
+	} else {
+		panic(
+			fmt.Sprintf("invalid state! Expected starting was %s", state[serverId]))
+	}	
 }
 
 func releaseServerLock(serverId string) {
