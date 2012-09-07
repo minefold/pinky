@@ -13,6 +13,22 @@ type Job struct {
 	ServerId string
 }
 
+/*
+	Funpack Methods
+*/
+
+func downloadFunpack() {
+	
+}
+
+func downloadWorld() {
+	
+}
+
+func backupWorld() {
+	
+}
+
 func popRedisQueue(c chan Job, client redis.Client, queue string) {
 	for {
 		bytes, e := client.Brpop(queue, 20);
@@ -48,11 +64,10 @@ func createRedisClient(database int) (client redis.Client) {
 func main() {
 	boxId := os.Args[1]
 
-	fmt.Println("box_id: ", boxId)
-
 	client := createRedisClient(13)
-
+	
 	boxQueueKey := fmt.Sprintf("box/%s/queue", boxId)
+	fmt.Println("processing queue:", boxQueueKey)
 	
 	jobChannel := make(chan Job)
 
