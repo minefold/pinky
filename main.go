@@ -1,4 +1,4 @@
-package main
+package pinky
 
 import (
   	"fmt"
