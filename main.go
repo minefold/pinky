@@ -1,12 +1,14 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"syscall"
 	"time"
 	"github.com/alphazero/Go-Redis"
 )
@@ -43,13 +45,11 @@ func downloadFunpack(id string, dest string) {
 
 func downloadWorld(id string, dest string) {
 	fmt.Println("downloading world", id, dest)
-	time.Sleep(5 * time.Second)
 	fmt.Println("downloaded world", id, dest)
 }
 
 func backupWorld(id string, dest string) {
 	fmt.Println("backing up world", id, dest)
-	time.Sleep(5 * time.Second)
 	fmt.Println("backed up world", id, dest)
 }
 
@@ -77,10 +77,25 @@ func startServerProcess(dest string, pidFile string) {
 	fmt.Println("starting", command)
 	cmd := exec.Command(bufferCmd, "-d", dest, "-p", pidFile, command)
 	cmd.Dir = workingDirectory
-	fmt.Println(cmd)
-	err := cmd.Start()
 	
-	fmt.Println(err)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		panic(err)
+	}
+	
+	err = cmd.Start()
+	if err != nil {
+		panic(err)
+	}
+	
+	buf := make([]byte, 1024)
+	_, err = stdout.Read(buf)
+	if err != nil {
+		panic(err)
+	}
+	
+	fmt.Println(string(buf))
+	
 }
 
 func prepareServerPath(serverPath string) {
@@ -101,13 +116,32 @@ func startWorld(job Job, serverRoot string, pidRoot string) {
 		downloadFunpack(job.WorldId, serverPath)
 		downloadWorld(job.WorldId, serverPath)
 		startServerProcess(serverPath, pidFile)
-		transitionStartingToUp(job.ServerId)
-		// monitor(job.ServerId)
+		// transitionStartingToUp(job.ServerId)
+		go monitor(serverPath)
 
 	} else {
 		fmt.Println("Ignoring start request")
 	}
+}
+
+func monitor(serverPath string) {
+	stdoutPipe := filepath.Join(serverPath, "pipe_stdout")
 	
+	// wait for file to exist
+	time.Sleep(3 * time.Second)
+	stdout, err := os.OpenFile(stdoutPipe, syscall.O_NONBLOCK | syscall.O_RDONLY, 0x0666)
+	if err != nil {
+		panic(err)
+	}
+	defer stdout.Close()
+
+	r := bufio.NewReader(stdout)
+	line, isPrefix, err := r.ReadLine()
+    for err == nil && !isPrefix {
+        s := string(line)
+        fmt.Println(s)
+        line, isPrefix, err = r.ReadLine()
+    }
 }
 
 func stopWorld(job Job) {
