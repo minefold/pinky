@@ -1,32 +1,40 @@
 package main
 
 import (
-  	"fmt"
-	"log"
-  	"os"
 	"encoding/json"
-  	"github.com/alphazero/Go-Redis"
+	"fmt"
+	"log"
+	"os"
+	"time"
+	"github.com/alphazero/Go-Redis"
 )
 
 type Job struct {
 	Name string
 	ServerId string
+	WorldId string
 }
 
 /*
 	Funpack Methods
 */
 
-func downloadFunpack() {
-	
+func downloadFunpack(id string, dest string) {
+	fmt.Println("downloading funpack", id, dest)
+	time.Sleep(5 * time.Second)
+	fmt.Println("downloaded funpack", id, dest)
 }
 
-func downloadWorld() {
-	
+func downloadWorld(id string, dest string) {
+	fmt.Println("downloading world", id, dest)
+	time.Sleep(5 * time.Second)
+	fmt.Println("downloaded world", id, dest)
 }
 
-func backupWorld() {
-	
+func backupWorld(id string, dest string) {
+	fmt.Println("backing up world", id, dest)
+	time.Sleep(5 * time.Second)
+	fmt.Println("backed up world", id, dest)
 }
 
 func popRedisQueue(c chan Job, client redis.Client, queue string) {
@@ -37,15 +45,31 @@ func popRedisQueue(c chan Job, client redis.Client, queue string) {
 		// If the pop times out, it just returns the key, no value
 		if len(bytes) > 1 {
 			// fmt.Sprintf("%s", bytes[1])
-			var m Job
-			json.Unmarshal(bytes[1], &m)
-			c <- m
+			var job Job
+			json.Unmarshal(bytes[1], &job)
+			c <- job
 		}
 	}
 }
 
-func startWorld(job Job) {
-	fmt.Println("Starting world", job.ServerId)
+func startServerProcess(dest string) {
+	startCmd := fmt.Sprintf("%s/bin/start", dest)
+	fmt.Println("starting", startCmd)
+}
+
+func startWorld(job Job, dest string) {
+	if (acquireServerLock(job.ServerId)) {
+		fmt.Println("Starting world", job.ServerId)
+		
+		downloadFunpack(job.WorldId, dest)
+		downloadWorld(job.WorldId, dest)
+		startServerProcess(dest)
+		
+		releaseServerLock(job.ServerId)
+	} else {
+		fmt.Println("Ignoring start request")
+	}
+	
 }
 
 func stopWorld(job Job) {
@@ -61,8 +85,29 @@ func createRedisClient(database int) (client redis.Client) {
 	return
 }
 
+var serverLocks = map[string] int {}
+
+func acquireServerLock(serverId string) bool {
+	lock := serverLocks[serverId]
+	fmt.Println(lock)
+	if lock == 0 {
+		serverLocks[serverId] = 1
+		return true
+	} else {
+		return false
+	}
+	// what the shit!?
+	return true
+}
+
+func releaseServerLock(serverId string) {
+	delete(serverLocks, serverId)
+}
+
 func main() {
 	boxId := os.Args[1]
+	
+	worldPath := "/usr/bin/something"
 
 	client := createRedisClient(13)
 	
@@ -75,11 +120,12 @@ func main() {
 	
 	for {
 		job := <- jobChannel
+		
 		fmt.Println(job)
-	
+		
 		switch job.Name {
-		case "start": startWorld(job)
-		case "stop": stopWorld(job)
+		case "start": go startWorld(job, worldPath)
+		case "stop": go stopWorld(job)
 		default: fmt.Println("Unknown job", job)
 		}
 	}
