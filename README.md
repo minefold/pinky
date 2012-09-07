@@ -77,6 +77,7 @@ box/1/server/1/queue
 
   EVENT TYPES
     started
+    stopping
     player_connected      { playername: '..' }
     player_disconnected
     chatted

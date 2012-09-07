@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"time"
 	"github.com/alphazero/Go-Redis"
 )
@@ -17,11 +19,25 @@ type Job struct {
 
 /*
 	Funpack Methods
+
+/worlds
+/worlds/1
+/worlds/1/funpack
+/worlds/1/working
+/worlds/1/backup
+
+id.port.pid
+
 */
 
 func downloadFunpack(id string, dest string) {
 	fmt.Println("downloading funpack", id, dest)
-	time.Sleep(5 * time.Second)
+	
+	funpackPath := filepath.Join(dest, "funpack")
+	
+	exec.Command("cp", "-r", 
+		"/Users/dave/code/minefold/funpacks/dummy.funpack", funpackPath).Run()
+	
 	fmt.Println("downloaded funpack", id, dest)
 }
 
@@ -52,18 +68,39 @@ func popRedisQueue(c chan Job, client redis.Client, queue string) {
 	}
 }
 
-func startServerProcess(dest string) {
-	startCmd := fmt.Sprintf("%s/bin/start", dest)
-	fmt.Println("starting", startCmd)
+func startServerProcess(dest string, pidFile string) {
+	command := filepath.Join(dest, "funpack", "bin", "start")
+	workingDirectory := filepath.Join(dest, "working")
+	
+	bufferCmd, _ := filepath.Abs("bin/buffer-process")
+	
+	fmt.Println("starting", command)
+	cmd := exec.Command(bufferCmd, "-d", dest, "-p", pidFile, command)
+	cmd.Dir = workingDirectory
+	fmt.Println(cmd)
+	err := cmd.Start()
+	
+	fmt.Println(err)
 }
 
-func startWorld(job Job, dest string) {
+func prepareServerPath(serverPath string) {
+	workingDirectory := filepath.Join(serverPath, "working")
+	exec.Command("mkdir", "-p", workingDirectory).Run()
+}
+
+func startWorld(job Job, serverRoot string, pidRoot string) {
 	if (attemptStartingTransition(job.ServerId)) {
 		fmt.Println("Starting world", job.ServerId)
 		
-		downloadFunpack(job.WorldId, dest)
-		downloadWorld(job.WorldId, dest)
-		startServerProcess(dest)
+		serverPath := filepath.Join(serverRoot, job.ServerId)
+		pidFile := filepath.Join(pidRoot, fmt.Sprintf("%s.pid", job.ServerId))
+		
+		fmt.Println(serverPath)
+
+		prepareServerPath(serverPath)
+		downloadFunpack(job.WorldId, serverPath)
+		downloadWorld(job.WorldId, serverPath)
+		startServerProcess(serverPath, pidFile)
 		transitionStartingToUp(job.ServerId)
 		// monitor(job.ServerId)
 
@@ -117,7 +154,10 @@ func releaseServerLock(serverId string) {
 func main() {
 	boxId := os.Args[1]
 	
-	worldPath := "/usr/bin/something"
+	serverRoot, _ := filepath.Abs("tmp/servers")
+	pidRoot, _ := filepath.Abs("tmp/pids")
+
+	exec.Command("mkdir", "-p", pidRoot).Run()
 
 	client := createRedisClient(13)
 	
@@ -134,7 +174,7 @@ func main() {
 		fmt.Println(job)
 		
 		switch job.Name {
-		case "start": go startWorld(job, worldPath)
+		case "start": go startWorld(job, serverRoot, pidRoot)
 		case "stop": go stopWorld(job)
 		default: fmt.Println("Unknown job", job)
 		}
