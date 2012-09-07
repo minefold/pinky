@@ -1,4 +1,4 @@
-package pinky
+package main
 
 import "testing"
 
