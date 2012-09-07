@@ -103,7 +103,7 @@ func prepareServerPath(serverPath string) {
 	exec.Command("mkdir", "-p", workingDirectory).Run()
 }
 
-func startWorld(job Job, serverRoot string, pidRoot string) {
+func startServer(job Job, serverRoot string, pidRoot string) {
 	if (attemptStartingTransition(job.ServerId)) {
 		fmt.Println("Starting world", job.ServerId)
 		
@@ -185,6 +185,20 @@ func releaseServerLock(serverId string) {
 	delete(state, serverId)
 }
 
+func processJobs(jobChannel chan Job) {
+	for {
+		job := <- jobChannel
+		
+		fmt.Println(job)
+		
+		switch job.Name {
+		case "start": go startServer(job, serverRoot, pidRoot)
+		case "stop": go stopWorld(job)
+		default: fmt.Println("Unknown job", job)
+		}
+	}
+}
+
 func main() {
 	boxId := os.Args[1]
 	
@@ -202,18 +216,7 @@ func main() {
 
 	go popRedisQueue(jobChannel, client, boxQueueKey)
 	
-	for {
-		job := <- jobChannel
-		
-		fmt.Println(job)
-		
-		switch job.Name {
-		case "start": go startWorld(job, serverRoot, pidRoot)
-		case "stop": go stopWorld(job)
-		default: fmt.Println("Unknown job", job)
-		}
-	}
-	
+	processJobs(jobChannel)
 
   /*
     figure out what the current state is
