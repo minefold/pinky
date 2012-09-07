@@ -64,8 +64,7 @@ func startWorld(job Job, dest string) {
 		downloadFunpack(job.WorldId, dest)
 		downloadWorld(job.WorldId, dest)
 		startServerProcess(dest)
-		
-		releaseServerLock(job.ServerId)
+		// update state to up
 	} else {
 		fmt.Println("Ignoring start request")
 	}
@@ -85,13 +84,15 @@ func createRedisClient(database int) (client redis.Client) {
 	return
 }
 
-var serverLocks = map[string] int {}
+var state = map[string] string {}
 
 func acquireServerLock(serverId string) bool {
-	lock := serverLocks[serverId]
+	// redis: state/1
+	
+	lock := state[serverId]
 	fmt.Println(lock)
 	if lock == 0 {
-		serverLocks[serverId] = 1
+		state[serverId] = "starting"
 		return true
 	} else {
 		return false
@@ -101,7 +102,7 @@ func acquireServerLock(serverId string) bool {
 }
 
 func releaseServerLock(serverId string) {
-	delete(serverLocks, serverId)
+	delete(state, serverId)
 }
 
 func main() {
