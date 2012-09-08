@@ -130,6 +130,10 @@ func startServer(job Job, serverRoot string, pidRoot string) {
 		events := make(chan ServerEvent)
 		
 		go server.Monitor(events)
+		
+		for event := range(events) {
+			fmt.Println("got event", event)
+		}
 
 	} else {
 		fmt.Println("Ignoring start request")

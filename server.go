@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"time"
 	"syscall"
@@ -15,7 +16,8 @@ type Server struct {
 }
 
 type ServerEvent struct {
-  Name string
+  Event string
+  At int64
 }
 
 func (s *Server) stdoutPath() string {
@@ -28,11 +30,17 @@ func (s *Server) stdinPath() string {
 
 
 func (s *Server) Monitor(c chan ServerEvent) {
+	// TODO this is testing
+	go func() {
+		time.Sleep(10 * time.Second)
+		fmt.Println("going to sleep")
+		s.Stop()
+	}()
+	
 	// TODO Wait for file to exist
 	time.Sleep(3 * time.Second)
 
-	stdout, err := os.OpenFile(s.stdoutPath(),
-		syscall.O_NONBLOCK | syscall.O_RDONLY, 0x0)
+	stdout, err := os.OpenFile(s.stdoutPath(), syscall.O_RDONLY, 0x0)
 
 	if err != nil {
 		// TODO Handle better
@@ -42,40 +50,40 @@ func (s *Server) Monitor(c chan ServerEvent) {
 	defer stdout.Close()
 
 	r := bufio.NewReader(stdout)
-		
 	line, isPrefix, err := r.ReadLine()
 	
-	go func() {
-		fmt.Println("going to sleep")
-		time.Sleep(5 * time.Second)
-		s.Stop()
-	}()
-	
 	for err == nil && !isPrefix {
-	    s := string(line)
-	    fmt.Println(s)
-		// c <- line
-		
-	    line, isPrefix, err = r.ReadLine()
+		event, parseErr := s.parseEvent(line)
+		if parseErr == nil {
+			c <- event
+		} else {
+			fmt.Println("Parse error", parseErr)
+		}
+		line, isPrefix, err = r.ReadLine()
 	}
+	
+	fmt.Println("stdout closed")	
+	s.processExited()
+}
+
+func (s *Server) parseEvent(line []byte) (event ServerEvent, err error) {
+	err = json.Unmarshal(line, &event)
+	return
+}
+
+func (s *Server) processExited() {
+	fmt.Println("process exited")
 }
 
 func (s *Server) Stop() {
-	fmt.Println("stopping")
-	
-	fmt.Println(s.stdinPath())
 	stdin, err := os.OpenFile(s.stdinPath(), syscall.O_WRONLY | syscall.O_APPEND, 0x0)
-	fmt.Println("1")
-	
+
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println("2")
 	defer stdin.Close()
-	fmt.Println("3")
 	
 	stdin.WriteString("stop\n")
-	fmt.Println("here!")
 }
 
 
