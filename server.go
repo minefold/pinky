@@ -36,7 +36,7 @@ func (s *Server) stdinPath() string {
 func (s *Server) Monitor(c chan ServerEvent) {
 	// TODO this is testing
 	go func() {
-		time.Sleep(10 * time.Second)
+		time.Sleep(4 * time.Second)
 		fmt.Println("going to sleep")
 		s.Stop()
 	}()
@@ -67,9 +67,31 @@ func (s *Server) Monitor(c chan ServerEvent) {
 	}
 	
 	fmt.Println("stdout closed")	
-	
-	// wait for process exit or kill the mofo
-	
+
+	timeout := make(chan bool, 1)
+    go func() {
+        time.Sleep(10 * time.Second)
+		fmt.Println("timing out...")
+        timeout <- true
+    }()
+
+	wait := make(chan bool, 1)
+	go func() {
+		_, waitErr := s.BufProcess.Wait()
+		if waitErr == nil {
+			wait <- true
+		} else {
+			fmt.Println("process wait error", waitErr)	
+		}
+	}()
+
+	select {
+    case <- wait:
+        fmt.Println("process exited")
+    case <-timeout:
+        fmt.Println("timeout waiting for process exit")
+    }
+
 	close(c)
 }
 
