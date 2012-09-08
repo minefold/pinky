@@ -18,6 +18,7 @@ type Server struct {
 type ServerEvent struct {
   Event string
   At int64
+  Msg string
 }
 
 func (s *Server) stdoutPath() string {
@@ -64,7 +65,7 @@ func (s *Server) Monitor(c chan ServerEvent) {
 	
 	fmt.Println("stdout closed")	
 	
-	c <- nil
+	close(c)
 }
 
 func (s *Server) parseEvent(line []byte) (event ServerEvent, err error) {
