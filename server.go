@@ -63,16 +63,13 @@ func (s *Server) Monitor(c chan ServerEvent) {
 	}
 	
 	fmt.Println("stdout closed")	
-	s.processExited()
+	
+	c <- nil
 }
 
 func (s *Server) parseEvent(line []byte) (event ServerEvent, err error) {
 	err = json.Unmarshal(line, &event)
 	return
-}
-
-func (s *Server) processExited() {
-	fmt.Println("process exited")
 }
 
 func (s *Server) Stop() {

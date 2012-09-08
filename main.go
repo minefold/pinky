@@ -134,6 +134,7 @@ func startServer(job Job, serverRoot string, pidRoot string) {
 		for event := range(events) {
 			fmt.Println("got event", event)
 		}
+		fmt.Println("All done!")
 
 	} else {
 		fmt.Println("Ignoring start request")
