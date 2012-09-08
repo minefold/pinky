@@ -6,6 +6,7 @@ import (
 	"time"
 	"syscall"
 	"bufio"
+	"os/exec"
 	"fmt"
 	"os"
 )
@@ -13,6 +14,8 @@ import (
 type Server struct {
 	Id string
 	Path string
+	BufProcess *os.Process
+	Process *os.Process
 }
 
 type ServerEvent struct {
@@ -65,6 +68,8 @@ func (s *Server) Monitor(c chan ServerEvent) {
 	
 	fmt.Println("stdout closed")	
 	
+	// wait for process exit or kill the mofo
+	
 	close(c)
 }
 
@@ -85,3 +90,60 @@ func (s *Server) Stop() {
 }
 
 
+
+func (s *Server) StartServerProcess(dest string, pidFile string) {
+	command := filepath.Join(dest, "funpack", "bin", "start")
+	workingDirectory := filepath.Join(dest, "working")
+	
+	bufferCmd, _ := filepath.Abs("bin/buffer-process")
+	
+	fmt.Println("starting", command)
+	cmd := exec.Command(bufferCmd, "-d", dest, "-p", pidFile, command)
+	cmd.Dir = workingDirectory
+	
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		panic(err)
+	}
+	
+	err = cmd.Start()
+	if err != nil {
+		panic(err)
+	}
+	
+	buf := make([]byte, 1024)
+	_, err = stdout.Read(buf)
+	if err != nil {
+		panic(err)
+	}
+	
+	s.BufProcess = cmd.Process
+	
+	fmt.Println(string(buf))
+}
+
+func (s *Server) PrepareServerPath(serverPath string) {
+	workingDirectory := filepath.Join(serverPath, "working")
+	exec.Command("mkdir", "-p", workingDirectory).Run()
+}
+
+func (s *Server) DownloadFunpack(id string, dest string) {
+	fmt.Println("downloading funpack", id, dest)
+	
+	funpackPath := filepath.Join(dest, "funpack")
+	
+	exec.Command("cp", "-r", 
+		"/Users/dave/code/minefold/funpacks/dummy.funpack", funpackPath).Run()
+	
+	fmt.Println("downloaded funpack", id, dest)
+}
+
+func (s *Server) DownloadWorld(id string, dest string) {
+	fmt.Println("downloading world", id, dest)
+	fmt.Println("downloaded world", id, dest)
+}
+
+func (s *Server) BackupWorld(id string, dest string) {
+	fmt.Println("backing up world", id, dest)
+	fmt.Println("backed up world", id, dest)
+}

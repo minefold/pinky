@@ -37,27 +37,6 @@ type Job struct {
 
 */
 
-func downloadFunpack(id string, dest string) {
-	fmt.Println("downloading funpack", id, dest)
-	
-	funpackPath := filepath.Join(dest, "funpack")
-	
-	exec.Command("cp", "-r", 
-		"/Users/dave/code/minefold/funpacks/dummy.funpack", funpackPath).Run()
-	
-	fmt.Println("downloaded funpack", id, dest)
-}
-
-func downloadWorld(id string, dest string) {
-	fmt.Println("downloading world", id, dest)
-	fmt.Println("downloaded world", id, dest)
-}
-
-func backupWorld(id string, dest string) {
-	fmt.Println("backing up world", id, dest)
-	fmt.Println("backed up world", id, dest)
-}
-
 func popRedisQueue(c chan Job, client redis.Client, queue string) {
 	for {
 		bytes, e := client.Brpop(queue, 20);
@@ -73,40 +52,6 @@ func popRedisQueue(c chan Job, client redis.Client, queue string) {
 	}
 }
 
-func startServerProcess(dest string, pidFile string) {
-	command := filepath.Join(dest, "funpack", "bin", "start")
-	workingDirectory := filepath.Join(dest, "working")
-	
-	bufferCmd, _ := filepath.Abs("bin/buffer-process")
-	
-	fmt.Println("starting", command)
-	cmd := exec.Command(bufferCmd, "-d", dest, "-p", pidFile, command)
-	cmd.Dir = workingDirectory
-	
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		panic(err)
-	}
-	
-	err = cmd.Start()
-	if err != nil {
-		panic(err)
-	}
-	
-	buf := make([]byte, 1024)
-	_, err = stdout.Read(buf)
-	if err != nil {
-		panic(err)
-	}
-	
-	fmt.Println(string(buf))
-}
-
-func prepareServerPath(serverPath string) {
-	workingDirectory := filepath.Join(serverPath, "working")
-	exec.Command("mkdir", "-p", workingDirectory).Run()
-}
-
 func startServer(job Job, serverRoot string, pidRoot string) {
 	if (attemptStartingTransition(job.ServerId)) {
 		
@@ -119,22 +64,22 @@ func startServer(job Job, serverRoot string, pidRoot string) {
 		serverPath := server.Path
 		pidFile := filepath.Join(pidRoot, fmt.Sprintf("%s.pid", job.ServerId))
 		
-		fmt.Println(serverPath)
-
-		prepareServerPath(serverPath)
-		downloadFunpack(job.WorldId, serverPath)
-		downloadWorld(job.WorldId, serverPath)
-		startServerProcess(serverPath, pidFile)
-		// transitionStartingToUp(job.ServerId)
+		server.PrepareServerPath(serverPath)
+		server.DownloadFunpack(job.WorldId, serverPath)
+		server.DownloadWorld(job.WorldId, serverPath)
+		server.StartServerProcess(serverPath, pidFile)
 		
 		events := make(chan ServerEvent)
 		
 		go server.Monitor(events)
 		
 		for event := range(events) {
-			fmt.Println("got event", event)
+			switch event.Event {
+				case "started": transitionStartingToUp(job.ServerId)
+				case "stopping": transitionUpToStopping(job.ServerId)
+			}
 		}
-		fmt.Println("All done!")
+		transitionStoppingToStopped(job.ServerId)
 
 	} else {
 		fmt.Println("Ignoring start request")
@@ -178,8 +123,22 @@ func transitionStartingToUp(serverId string) {
 	}	
 }
 
-func releaseServerLock(serverId string) {
-	delete(state, serverId)
+func transitionUpToStopping(serverId string) {
+	if state[serverId] == "up" {
+		state[serverId] = "stopping"
+	} else {
+		panic(
+			fmt.Sprintf("invalid state! Expected starting was %s", state[serverId]))
+	}	
+}
+
+func transitionStoppingToStopped(serverId string) {
+	if state[serverId] == "stopping" {
+		delete(state, serverId)
+	} else {
+		panic(
+			fmt.Sprintf("invalid state! Expected starting was %s", state[serverId]))
+	}	
 }
 
 func processJobs(jobChannel chan Job, serverRoot string, pidRoot string) {
