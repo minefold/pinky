@@ -1,15 +1,14 @@
 package main
 
 import (
-	"bufio"
+	// "bufio"
 	"encoding/json"
 	"fmt"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"syscall"
-	"time"
+	// "time"
 	"github.com/alphazero/Go-Redis"
 )
 
@@ -21,14 +20,20 @@ type Job struct {
 
 /*
 	Funpack Methods
-
-/worlds
-/worlds/1
-/worlds/1/funpack
-/worlds/1/working
-/worlds/1/backup
-
-id.port.pid
+	
+	
+	/pids/1.pid
+	
+	/servers
+	/servers/1
+	
+	/servers/1/stdin
+	/servers/1/stderr
+	/servers/1/stdout
+	
+	/servers/1/funpack/
+	/servers/1/working/
+	/servers/1/backup/
 
 */
 
@@ -95,7 +100,6 @@ func startServerProcess(dest string, pidFile string) {
 	}
 	
 	fmt.Println(string(buf))
-	
 }
 
 func prepareServerPath(serverPath string) {
@@ -105,9 +109,14 @@ func prepareServerPath(serverPath string) {
 
 func startServer(job Job, serverRoot string, pidRoot string) {
 	if (attemptStartingTransition(job.ServerId)) {
+		
+		server := new(Server)
+		server.Id = job.ServerId
+		server.Path = filepath.Join(serverRoot, server.Id)
+		
 		fmt.Println("Starting world", job.ServerId)
 		
-		serverPath := filepath.Join(serverRoot, job.ServerId)
+		serverPath := server.Path
 		pidFile := filepath.Join(pidRoot, fmt.Sprintf("%s.pid", job.ServerId))
 		
 		fmt.Println(serverPath)
@@ -117,31 +126,14 @@ func startServer(job Job, serverRoot string, pidRoot string) {
 		downloadWorld(job.WorldId, serverPath)
 		startServerProcess(serverPath, pidFile)
 		// transitionStartingToUp(job.ServerId)
-		go monitor(serverPath)
+		
+		events := make(chan ServerEvent)
+		
+		go server.Monitor(events)
 
 	} else {
 		fmt.Println("Ignoring start request")
 	}
-}
-
-func monitor(serverPath string) {
-	stdoutPipe := filepath.Join(serverPath, "pipe_stdout")
-	
-	// wait for file to exist
-	time.Sleep(3 * time.Second)
-	stdout, err := os.OpenFile(stdoutPipe, syscall.O_NONBLOCK | syscall.O_RDONLY, 0x0666)
-	if err != nil {
-		panic(err)
-	}
-	defer stdout.Close()
-
-	r := bufio.NewReader(stdout)
-	line, isPrefix, err := r.ReadLine()
-    for err == nil && !isPrefix {
-        s := string(line)
-        fmt.Println(s)
-        line, isPrefix, err = r.ReadLine()
-    }
 }
 
 func stopWorld(job Job) {
@@ -185,7 +177,7 @@ func releaseServerLock(serverId string) {
 	delete(state, serverId)
 }
 
-func processJobs(jobChannel chan Job) {
+func processJobs(jobChannel chan Job, serverRoot string, pidRoot string) {
 	for {
 		job := <- jobChannel
 		
@@ -204,7 +196,7 @@ func main() {
 	
 	serverRoot, _ := filepath.Abs("tmp/servers")
 	pidRoot, _ := filepath.Abs("tmp/pids")
-
+	
 	exec.Command("mkdir", "-p", pidRoot).Run()
 
 	client := createRedisClient(13)
@@ -216,7 +208,7 @@ func main() {
 
 	go popRedisQueue(jobChannel, client, boxQueueKey)
 	
-	processJobs(jobChannel)
+	processJobs(jobChannel, serverRoot, pidRoot)
 
   /*
     figure out what the current state is
