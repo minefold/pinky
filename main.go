@@ -20,12 +20,9 @@ type Job struct {
 
 /*
 	Funpack Methods
-	
-	
-	/pids/1.pid
-	
+		
 	/servers
-	/servers/1
+	/servers/1.pid
 	
 	/servers/1/stdin
 	/servers/1/stderr
@@ -52,7 +49,7 @@ func popRedisQueue(c chan Job, client redis.Client, queue string) {
 	}
 }
 
-func startServer(job Job, serverRoot string, pidRoot string) {
+func startServer(job Job, serverRoot string) {
 	if (attemptStartingTransition(job.ServerId)) {
 		
 		server := new(Server)
@@ -62,7 +59,7 @@ func startServer(job Job, serverRoot string, pidRoot string) {
 		fmt.Println("Starting world", job.ServerId)
 		
 		serverPath := server.Path
-		pidFile := filepath.Join(pidRoot, fmt.Sprintf("%s.pid", job.ServerId))
+		pidFile := filepath.Join(serverRoot, fmt.Sprintf("%s.pid", job.ServerId))
 		
 		server.PrepareServerPath(serverPath)
 		server.DownloadFunpack(job.WorldId, serverPath)
@@ -80,7 +77,8 @@ func startServer(job Job, serverRoot string, pidRoot string) {
 			}
 		}
 		transitionStoppingToStopped(job.ServerId)
-
+		fmt.Println("server stopped")
+		exec.Command("rm", "-f", pidFile).Run()
 	} else {
 		fmt.Println("Ignoring start request")
 	}
@@ -141,14 +139,14 @@ func transitionStoppingToStopped(serverId string) {
 	}	
 }
 
-func processJobs(jobChannel chan Job, serverRoot string, pidRoot string) {
+func processJobs(jobChannel chan Job, serverRoot string) {
 	for {
 		job := <- jobChannel
 		
 		fmt.Println(job)
 		
 		switch job.Name {
-		case "start": go startServer(job, serverRoot, pidRoot)
+		case "start": go startServer(job, serverRoot)
 		case "stop": go stopWorld(job)
 		default: fmt.Println("Unknown job", job)
 		}
@@ -159,9 +157,8 @@ func main() {
 	boxId := os.Args[1]
 	
 	serverRoot, _ := filepath.Abs("tmp/servers")
-	pidRoot, _ := filepath.Abs("tmp/pids")
 	
-	exec.Command("mkdir", "-p", pidRoot).Run()
+	exec.Command("mkdir", "-p", serverRoot).Run()
 
 	client := createRedisClient(13)
 	
@@ -172,7 +169,7 @@ func main() {
 
 	go popRedisQueue(jobChannel, client, boxQueueKey)
 	
-	processJobs(jobChannel, serverRoot, pidRoot)
+	processJobs(jobChannel, serverRoot)
 
   /*
     figure out what the current state is

@@ -32,18 +32,7 @@ func (s *Server) stdinPath() string {
   return filepath.Join(s.Path, "pipe_stdin")
 }
 
-
-func (s *Server) Monitor(c chan ServerEvent) {
-	// TODO this is testing
-	go func() {
-		time.Sleep(4 * time.Second)
-		fmt.Println("going to sleep")
-		s.Stop()
-	}()
-	
-	// TODO Wait for file to exist
-	time.Sleep(3 * time.Second)
-
+func (s *Server) processStdout(c chan ServerEvent) {
 	stdout, err := os.OpenFile(s.stdoutPath(), syscall.O_RDONLY, 0x0)
 
 	if err != nil {
@@ -66,12 +55,39 @@ func (s *Server) Monitor(c chan ServerEvent) {
 		line, isPrefix, err = r.ReadLine()
 	}
 	
-	fmt.Println("stdout closed")	
+	close(c)
+}
 
+
+func (s *Server) Monitor(c chan ServerEvent) {
+	// TODO this is testing
+	go func() {
+		time.Sleep(4 * time.Second)
+		fmt.Println("going to sleep")
+		s.Stop()
+	}()
+	
+	// TODO Wait for file to exist
+	time.Sleep(3 * time.Second)
+
+	events := make(chan ServerEvent)
+	go s.processStdout(events)
+	
+	for event := range(events) {
+		fmt.Println(event)
+		switch event.Event {
+			case "stopping": go s.ensureServerStopped()
+		}
+		c <- event
+	}
+
+	close(c)
+}
+
+func (s *Server) ensureServerStopped() {
 	timeout := make(chan bool, 1)
     go func() {
         time.Sleep(10 * time.Second)
-		fmt.Println("timing out...")
         timeout <- true
     }()
 
@@ -89,10 +105,9 @@ func (s *Server) Monitor(c chan ServerEvent) {
     case <- wait:
         fmt.Println("process exited")
     case <-timeout:
-        fmt.Println("timeout waiting for process exit")
+        fmt.Println("timeout waiting for process exit. killing process")
+		s.BufProcess.Kill()
     }
-
-	close(c)
 }
 
 func (s *Server) parseEvent(line []byte) (event ServerEvent, err error) {
@@ -146,6 +161,7 @@ func (s *Server) StartServerProcess(dest string, pidFile string) {
 
 func (s *Server) PrepareServerPath(serverPath string) {
 	workingDirectory := filepath.Join(serverPath, "working")
+	exec.Command("rm", "-rf", workingDirectory).Run()
 	exec.Command("mkdir", "-p", workingDirectory).Run()
 }
 
@@ -154,6 +170,7 @@ func (s *Server) DownloadFunpack(id string, dest string) {
 	
 	funpackPath := filepath.Join(dest, "funpack")
 	
+	exec.Command("rm", "-rf", funpackPath).Run()
 	exec.Command("cp", "-r", 
 		"/Users/dave/code/minefold/funpacks/dummy.funpack", funpackPath).Run()
 	
