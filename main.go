@@ -34,6 +34,8 @@ type Job struct {
 
 */
 
+var servers = map[string] *Server {}
+
 func popRedisQueue(c chan Job, client redis.Client, queue string) {
 	for {
 		bytes, e := client.Brpop(queue, 20);
@@ -56,6 +58,8 @@ func startServer(job Job, serverRoot string) {
 		server.Id = job.ServerId
 		server.Path = filepath.Join(serverRoot, server.Id)
 		
+		servers[server.Id] = server
+		
 		fmt.Println("Starting world", job.ServerId)
 		
 		serverPath := server.Path
@@ -71,21 +75,27 @@ func startServer(job Job, serverRoot string) {
 		go server.Monitor(events)
 		
 		for event := range(events) {
+			fmt.Println(event)
 			switch event.Event {
 				case "started": transitionStartingToUp(job.ServerId)
-				case "stopping": transitionUpToStopping(job.ServerId)
+				case "stopping": attemptStoppingTransition(job.ServerId)
 			}
 		}
 		transitionStoppingToStopped(job.ServerId)
 		fmt.Println("server stopped")
 		exec.Command("rm", "-f", pidFile).Run()
+		delete(servers, job.ServerId)
 	} else {
 		fmt.Println("Ignoring start request")
 	}
 }
 
-func stopWorld(job Job) {
-	fmt.Println("Stopping world")
+func stopServer(job Job) {
+	if (attemptStoppingTransition(job.ServerId)) {
+		servers[job.ServerId].Stop()
+	} else {
+		fmt.Println("Ignoring stop request")
+	}
 }
 
 func createRedisClient(database int) (client redis.Client) {
@@ -112,6 +122,21 @@ func attemptStartingTransition(serverId string) bool {
 	return true
 }
 
+func attemptStoppingTransition(serverId string) bool {
+	if servers[serverId] == nil {
+		return false
+	}
+	
+	if state[serverId] == "up" {
+		state[serverId] = "stopping"
+		return true
+	} else {
+		return false
+	}
+	// what the shit!?
+	return true
+}
+
 func transitionStartingToUp(serverId string) {
 	if state[serverId] == "starting" {
 		state[serverId] = "up"
@@ -122,11 +147,12 @@ func transitionStartingToUp(serverId string) {
 }
 
 func transitionUpToStopping(serverId string) {
+	fmt.Println("STOPZ!")
 	if state[serverId] == "up" {
 		state[serverId] = "stopping"
 	} else {
 		panic(
-			fmt.Sprintf("invalid state! Expected starting was %s", state[serverId]))
+			fmt.Sprintf("invalid state! Expected up was %s", state[serverId]))
 	}	
 }
 
@@ -147,7 +173,7 @@ func processJobs(jobChannel chan Job, serverRoot string) {
 		
 		switch job.Name {
 		case "start": go startServer(job, serverRoot)
-		case "stop": go stopWorld(job)
+		case "stop": go stopServer(job)
 		default: fmt.Println("Unknown job", job)
 		}
 	}

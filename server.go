@@ -19,17 +19,17 @@ type Server struct {
 }
 
 type ServerEvent struct {
-  Event string
-  At int64
-  Msg string
+	Event string
+	At int64
+	Msg string
 }
 
 func (s *Server) stdoutPath() string {
-  return filepath.Join(s.Path, "pipe_stdout")
+	return filepath.Join(s.Path, "pipe_stdout")
 }
 
 func (s *Server) stdinPath() string {
-  return filepath.Join(s.Path, "pipe_stdin")
+	return filepath.Join(s.Path, "pipe_stdin")
 }
 
 func (s *Server) processStdout(c chan ServerEvent) {
@@ -61,11 +61,11 @@ func (s *Server) processStdout(c chan ServerEvent) {
 
 func (s *Server) Monitor(c chan ServerEvent) {
 	// TODO this is testing
-	go func() {
-		time.Sleep(4 * time.Second)
-		fmt.Println("going to sleep")
-		s.Stop()
-	}()
+	// go func() {
+	// 	time.Sleep(4 * time.Second)
+	// 	fmt.Println("going to sleep")
+	// 	s.Stop()
+	// }()
 	
 	// TODO Wait for file to exist
 	time.Sleep(3 * time.Second)
@@ -74,7 +74,6 @@ func (s *Server) Monitor(c chan ServerEvent) {
 	go s.processStdout(events)
 	
 	for event := range(events) {
-		fmt.Println(event)
 		switch event.Event {
 			case "stopping": go s.ensureServerStopped()
 		}
