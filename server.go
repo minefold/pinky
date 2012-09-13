@@ -1,27 +1,27 @@
 package main
 
 import (
-	"encoding/json"
-	"path/filepath"
-	"time"
-	"syscall"
 	"bufio"
-	"os/exec"
+	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"syscall"
+	"time"
 )
 
 type Server struct {
-	Id string
-	Path string
+	Id         string
+	Path       string
 	BufProcess *os.Process
-	Process *os.Process
+	Process    *os.Process
 }
 
 type ServerEvent struct {
 	Event string
-	At int64
-	Msg string
+	At    int64
+	Msg   string
 }
 
 func (s *Server) stdoutPath() string {
@@ -44,7 +44,7 @@ func (s *Server) processStdout(c chan ServerEvent) {
 
 	r := bufio.NewReader(stdout)
 	line, isPrefix, err := r.ReadLine()
-	
+
 	for err == nil && !isPrefix {
 		event, parseErr := s.parseEvent(line)
 		if parseErr == nil {
@@ -54,10 +54,9 @@ func (s *Server) processStdout(c chan ServerEvent) {
 		}
 		line, isPrefix, err = r.ReadLine()
 	}
-	
+
 	close(c)
 }
-
 
 func (s *Server) Monitor(c chan ServerEvent) {
 	// TODO this is testing
@@ -66,16 +65,17 @@ func (s *Server) Monitor(c chan ServerEvent) {
 	// 	fmt.Println("going to sleep")
 	// 	s.Stop()
 	// }()
-	
+
 	// TODO Wait for file to exist
 	time.Sleep(3 * time.Second)
 
 	events := make(chan ServerEvent)
 	go s.processStdout(events)
-	
-	for event := range(events) {
+
+	for event := range events {
 		switch event.Event {
-			case "stopping": go s.ensureServerStopped()
+		case "stopping":
+			go s.ensureServerStopped()
 		}
 		c <- event
 	}
@@ -85,10 +85,10 @@ func (s *Server) Monitor(c chan ServerEvent) {
 
 func (s *Server) ensureServerStopped() {
 	timeout := make(chan bool, 1)
-    go func() {
-        time.Sleep(10 * time.Second)
-        timeout <- true
-    }()
+	go func() {
+		time.Sleep(10 * time.Second)
+		timeout <- true
+	}()
 
 	wait := make(chan bool, 1)
 	go func() {
@@ -96,17 +96,17 @@ func (s *Server) ensureServerStopped() {
 		if waitErr == nil {
 			wait <- true
 		} else {
-			fmt.Println("process wait error", waitErr)	
+			fmt.Println("process wait error", waitErr)
 		}
 	}()
 
 	select {
-    case <- wait:
-        fmt.Println("process exited")
-    case <-timeout:
-        fmt.Println("timeout waiting for process exit. killing process")
+	case <-wait:
+		fmt.Println("process exited")
+	case <-timeout:
+		fmt.Println("timeout waiting for process exit. killing process")
 		s.BufProcess.Kill()
-    }
+	}
 }
 
 func (s *Server) parseEvent(line []byte) (event ServerEvent, err error) {
@@ -115,46 +115,44 @@ func (s *Server) parseEvent(line []byte) (event ServerEvent, err error) {
 }
 
 func (s *Server) Stop() {
-	stdin, err := os.OpenFile(s.stdinPath(), syscall.O_WRONLY | syscall.O_APPEND, 0x0)
+	stdin, err := os.OpenFile(s.stdinPath(), syscall.O_WRONLY|syscall.O_APPEND, 0x0)
 
 	if err != nil {
 		panic(err)
 	}
 	defer stdin.Close()
-	
+
 	stdin.WriteString("stop\n")
 }
-
-
 
 func (s *Server) StartServerProcess(dest string, pidFile string) {
 	command := filepath.Join(dest, "funpack", "bin", "start")
 	workingDirectory := filepath.Join(dest, "working")
-	
+
 	bufferCmd, _ := filepath.Abs("bin/buffer-process")
-	
+
 	fmt.Println("starting", command)
 	cmd := exec.Command(bufferCmd, "-d", dest, "-p", pidFile, command)
 	cmd.Dir = workingDirectory
-	
+
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		panic(err)
 	}
-	
+
 	err = cmd.Start()
 	if err != nil {
 		panic(err)
 	}
-	
+
 	buf := make([]byte, 1024)
 	_, err = stdout.Read(buf)
 	if err != nil {
 		panic(err)
 	}
-	
+
 	s.BufProcess = cmd.Process
-	
+
 	fmt.Println(string(buf))
 }
 
@@ -166,13 +164,13 @@ func (s *Server) PrepareServerPath(serverPath string) {
 
 func (s *Server) DownloadFunpack(id string, dest string) {
 	fmt.Println("downloading funpack", id, dest)
-	
+
 	funpackPath := filepath.Join(dest, "funpack")
-	
+
 	exec.Command("rm", "-rf", funpackPath).Run()
-	exec.Command("cp", "-r", 
+	exec.Command("cp", "-r",
 		"/Users/dave/code/minefold/funpacks/dummy.funpack", funpackPath).Run()
-	
+
 	fmt.Println("downloaded funpack", id, dest)
 }
 

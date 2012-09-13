@@ -13,34 +13,51 @@ import (
 )
 
 type Job struct {
-	Name string
+	Name     string
 	ServerId string
-	WorldId string
+	WorldId  string
 }
 
 /*
 	Funpack Methods
-		
+
 	/servers
 	/servers/1.pid
-	
+
 	/servers/1/stdin
 	/servers/1/stderr
 	/servers/1/stdout
-	
+
 	/servers/1/funpack/
 	/servers/1/working/
 	/servers/1/backup/
 
 */
 
-var servers = map[string] *Server {}
+/*
+	Global Redis storage
+	(string) state/{serverId}  [starting|up|stopping]
 
-func popRedisQueue(c chan Job, client redis.Client, queue string) {
+	Local Redis storage
+	(set)  ports/{boxId}     [4001|4002]
+*/
+
+var redisClient redis.Client
+
+// TODO store in redis
+var servers = map[string]*Server{}
+var state = map[string]string{}
+var ports = map[int]bool{}
+
+func popRedisQueue(c chan Job, queue string) {
+	client := createRedisClient()
 	for {
-		bytes, e := client.Brpop(queue, 20);
-		if e!= nil { log.Println ("error on BRPOP", e); return }
-		
+		bytes, e := client.Brpop(queue, 20)
+		if e != nil {
+			log.Println("error on BRPOP", e)
+			return
+		}
+
 		// If the pop times out, it just returns the key, no value
 		if len(bytes) > 1 {
 			// fmt.Sprintf("%s", bytes[1])
@@ -52,33 +69,35 @@ func popRedisQueue(c chan Job, client redis.Client, queue string) {
 }
 
 func startServer(job Job, serverRoot string) {
-	if (attemptStartingTransition(job.ServerId)) {
-		
+	if attemptStartingTransition(job.ServerId) {
+
 		server := new(Server)
 		server.Id = job.ServerId
 		server.Path = filepath.Join(serverRoot, server.Id)
-		
+
 		servers[server.Id] = server
-		
+
 		fmt.Println("Starting world", job.ServerId)
-		
+
 		serverPath := server.Path
 		pidFile := filepath.Join(serverRoot, fmt.Sprintf("%s.pid", job.ServerId))
-		
+
 		server.PrepareServerPath(serverPath)
 		server.DownloadFunpack(job.WorldId, serverPath)
 		server.DownloadWorld(job.WorldId, serverPath)
 		server.StartServerProcess(serverPath, pidFile)
-		
+
 		events := make(chan ServerEvent)
-		
+
 		go server.Monitor(events)
-		
-		for event := range(events) {
+
+		for event := range events {
 			fmt.Println(event)
 			switch event.Event {
-				case "started": transitionStartingToUp(job.ServerId)
-				case "stopping": attemptStoppingTransition(job.ServerId)
+			case "started":
+				transitionStartingToUp(job.ServerId)
+			case "stopping":
+				attemptStoppingTransition(job.ServerId)
 			}
 		}
 		transitionStoppingToStopped(job.ServerId)
@@ -91,121 +110,118 @@ func startServer(job Job, serverRoot string) {
 }
 
 func stopServer(job Job) {
-	if (attemptStoppingTransition(job.ServerId)) {
+	if attemptStoppingTransition(job.ServerId) {
 		servers[job.ServerId].Stop()
 	} else {
 		fmt.Println("Ignoring stop request")
 	}
 }
 
-func createRedisClient(database int) (client redis.Client) {
-	spec := redis.DefaultSpec().Db(database)
-	client, e := redis.NewSynchClientWithSpec(spec);
-	if e != nil { 
-		panic("failed to create the client") 
+func createRedisClient() (client redis.Client) {
+	// TODO add real connection info
+	spec := redis.DefaultSpec().Db(13)
+	client, err := redis.NewSynchClientWithSpec(spec)
+	if err != nil {
+		panic("failed to create the client")
 	}
 	return
 }
 
-var state = map[string] string {}
+func handleRedisError(err error) {
+	// TODO something more sane
+	if err != nil {
+		panic("redis connection error")
+	}
+}
+
+func stateKey(serverId string) string {
+	return fmt.Sprintf("state/%s", serverId)
+}
+
+func stateTransition(serverId string, from string, to string, enforceStartingCondition bool) bool {
+	// TODO race condition?
+	serverStateKey := stateKey(serverId)
+
+	oldValue, err := redisClient.Get(serverStateKey)
+	handleRedisError(err)
+
+	if string(oldValue) != from {
+		if enforceStartingCondition {
+			panic(
+				fmt.Sprintf(
+					"invalid state! Expected %s was %s", from, oldValue))
+		} else {
+			return false
+		}
+	}
+
+	if to != "" {
+		err := redisClient.Set(serverStateKey, []byte(to))
+		handleRedisError(err)
+	} else {
+		_, err := redisClient.Del(serverStateKey)
+		handleRedisError(err)
+	}
+
+	return true
+}
 
 func attemptStartingTransition(serverId string) bool {
-	// redis: state/1
-	
-	if state[serverId] == "" {
-		state[serverId] = "starting"
-		return true
-	} else {
-		return false
-	}
-	// what the shit!?
-	return true
+	return stateTransition(serverId, "", "starting", false)
 }
 
 func attemptStoppingTransition(serverId string) bool {
-	if servers[serverId] == nil {
-		return false
-	}
-	
-	if state[serverId] == "up" {
-		state[serverId] = "stopping"
-		return true
-	} else {
-		return false
-	}
-	// what the shit!?
-	return true
+	return stateTransition(serverId, "up", "stopping", false)
 }
 
 func transitionStartingToUp(serverId string) {
-	if state[serverId] == "starting" {
-		state[serverId] = "up"
-	} else {
-		panic(
-			fmt.Sprintf("invalid state! Expected starting was %s", state[serverId]))
-	}	
+	stateTransition(serverId, "starting", "up", true)
 }
 
 func transitionUpToStopping(serverId string) {
-	fmt.Println("STOPZ!")
-	if state[serverId] == "up" {
-		state[serverId] = "stopping"
-	} else {
-		panic(
-			fmt.Sprintf("invalid state! Expected up was %s", state[serverId]))
-	}	
+	stateTransition(serverId, "up", "stopping", true)
 }
 
 func transitionStoppingToStopped(serverId string) {
-	if state[serverId] == "stopping" {
-		delete(state, serverId)
-	} else {
-		panic(
-			fmt.Sprintf("invalid state! Expected starting was %s", state[serverId]))
-	}	
+	stateTransition(serverId, "stopping", "", true)
 }
 
 func processJobs(jobChannel chan Job, serverRoot string) {
 	for {
-		job := <- jobChannel
-		
+		job := <-jobChannel
+
 		fmt.Println(job)
-		
+
 		switch job.Name {
-		case "start": go startServer(job, serverRoot)
-		case "stop": go stopServer(job)
-		default: fmt.Println("Unknown job", job)
+		case "start":
+			go startServer(job, serverRoot)
+		case "stop":
+			go stopServer(job)
+		default:
+			fmt.Println("Unknown job", job)
 		}
 	}
 }
 
 func main() {
 	boxId := os.Args[1]
-	
+
+	redisClient = createRedisClient()
+
 	serverRoot, _ := filepath.Abs("tmp/servers")
-	
 	exec.Command("mkdir", "-p", serverRoot).Run()
 
-	client := createRedisClient(13)
-	
-	boxQueueKey := fmt.Sprintf("box/%s/queue", boxId)
-	fmt.Println("processing queue:", boxQueueKey)
-	
 	jobChannel := make(chan Job)
+	boxQueueKey := fmt.Sprintf("box/%s/queue", boxId)
+	go popRedisQueue(jobChannel, boxQueueKey)
 
-	go popRedisQueue(jobChannel, client, boxQueueKey)
-	
 	processJobs(jobChannel, serverRoot)
 
-  /*
-    figure out what the current state is
-    ie. find out what servers are currently running, update state, monitor etc.
-  */
+	fmt.Println("processing queue:", boxQueueKey)
 
-  /*
-    process redis queue
-  */
-
-
+	/*
+	   TODO figure out what the current state is
+	   ie. find out what servers are currently running, update state, monitor etc.
+	*/
 
 }
