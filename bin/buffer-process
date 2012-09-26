@@ -134,7 +134,7 @@ begin
     pid, stdin, stdout = POSIX::Spawn::popen4("exec #{command} 2>&1")
 
     File.write(pid_file, pid) if pid_file
-    puts "process started with pid=#{pid}"
+    puts "process started with pid=#{pid} wdir=#{working_directory} cmd=#{command}"
 
     stdin_buffer = IOBufferIn.new(pipe_stdin_file, stdin)
     stdout_buffer = IOBufferOut.new(stdout, pipe_stdout_file)

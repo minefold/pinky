@@ -14,45 +14,28 @@ import (
 
 type Job struct {
 	Name     string
+	Funpack  string
 	ServerId string
 	WorldId  string
 }
-
-/*
-	Funpack Methods
-
-	/servers
-	/servers/1.pid
-
-	/servers/1/stdin
-	/servers/1/stderr
-	/servers/1/stdout
-
-	/servers/1/funpack/
-	/servers/1/working/
-	/servers/1/backup/
-
-*/
 
 /*
 	Global Redis storage
 	(string) state/{serverId}  [starting|up|stopping]
 
 	Local Redis storage
+	TODO support TCP/UDP port ranges
 	(set)  ports/{boxId}     [4001|4002]
 */
 
 var redisClient redis.Client
 
-// TODO store in redis
 var servers = map[string]*Server{}
-var state = map[string]string{}
-var ports = map[int]bool{}
 
 func popRedisQueue(c chan Job, queue string) {
 	client := createRedisClient()
 	for {
-		bytes, e := client.Brpop(queue, 20)
+		bytes, e := client.Brpop(queue, 60)
 		if e != nil {
 			log.Println("error on BRPOP", e)
 			return
@@ -83,8 +66,8 @@ func startServer(job Job, serverRoot string) {
 		pidFile := filepath.Join(serverRoot, fmt.Sprintf("%s.pid", job.ServerId))
 
 		server.PrepareServerPath(serverPath)
-		server.DownloadFunpack(job.WorldId, serverPath)
 		server.DownloadWorld(job.WorldId, serverPath)
+		server.DownloadFunpack(job.Funpack, serverPath)
 		server.StartServerProcess(serverPath, pidFile)
 
 		events := make(chan ServerEvent)
@@ -119,7 +102,7 @@ func stopServer(job Job) {
 
 func createRedisClient() (client redis.Client) {
 	// TODO add real connection info
-	spec := redis.DefaultSpec().Db(13)
+	spec := redis.DefaultSpec()
 	client, err := redis.NewSynchClientWithSpec(spec)
 	if err != nil {
 		panic("failed to create the client")
@@ -212,12 +195,11 @@ func main() {
 	exec.Command("mkdir", "-p", serverRoot).Run()
 
 	jobChannel := make(chan Job)
-	boxQueueKey := fmt.Sprintf("box/%s/queue", boxId)
+	boxQueueKey := fmt.Sprintf("jobs/%s", boxId)
 	go popRedisQueue(jobChannel, boxQueueKey)
 
-	processJobs(jobChannel, serverRoot)
-
 	fmt.Println("processing queue:", boxQueueKey)
+	processJobs(jobChannel, serverRoot)
 
 	/*
 	   TODO figure out what the current state is

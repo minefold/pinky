@@ -53,7 +53,18 @@ box/1/server/1/queue
 
 ### MULTI
   - (array of jobs)
+  
+## Paths
 
+$SERVERS (typically /mnt/servers)
+
+$SERVERS/1234.pid
+$SERVERS/1234/pipe_stdin
+$SERVERS/1234/pipe_stdout
+
+$SERVERS/1234/funpack
+$SERVERS/1234/working   (this will only exist for persistent state games)
+$SERVERS/1234/backup    (ditto)
 
 ## Starting a server
 * determine a port       ( process TBD )
@@ -115,4 +126,5 @@ box/1/server/1/queue
 
 * (upstart restarts the process)
 
-
+## Example Jobs
+lpush jobs/1 "{\"name\":\"start\", \"funpack\":\"team-fortress-2\", \"serverId\":1234}"

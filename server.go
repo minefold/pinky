@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -50,7 +51,7 @@ func (s *Server) processStdout(c chan ServerEvent) {
 		if parseErr == nil {
 			c <- event
 		} else {
-			fmt.Println("Parse error", parseErr)
+			fmt.Println("Parse error", parseErr, "line:", string(line))
 		}
 		line, isPrefix, err = r.ReadLine()
 	}
@@ -59,15 +60,8 @@ func (s *Server) processStdout(c chan ServerEvent) {
 }
 
 func (s *Server) Monitor(c chan ServerEvent) {
-	// TODO this is testing
-	// go func() {
-	// 	time.Sleep(4 * time.Second)
-	// 	fmt.Println("going to sleep")
-	// 	s.Stop()
-	// }()
-
 	// TODO Wait for file to exist
-	time.Sleep(3 * time.Second)
+	time.Sleep(30 * time.Second)
 
 	events := make(chan ServerEvent)
 	go s.processStdout(events)
@@ -125,35 +119,35 @@ func (s *Server) Stop() {
 	stdin.WriteString("stop\n")
 }
 
-func (s *Server) StartServerProcess(dest string, pidFile string) {
-	command := filepath.Join(dest, "funpack", "bin", "start")
-	workingDirectory := filepath.Join(dest, "working")
+func execWithOutput(cmd *exec.Cmd) {
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		fmt.Println(err)
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		fmt.Println(err)
+	}
+	err = cmd.Start()
+	if err != nil {
+		fmt.Println(err)
+	}
+	go io.Copy(os.Stdout, stdout)
+	go io.Copy(os.Stderr, stderr)
+	cmd.Wait()
+}
+
+func (s *Server) StartServerProcess(serverPath string, pidFile string) {
+	command := filepath.Join(serverPath, "funpack", "bin", "run")
+	workingDirectory := filepath.Join(serverPath, "funpack")
 
 	bufferCmd, _ := filepath.Abs("bin/buffer-process")
 
-	fmt.Println("starting", command)
-	cmd := exec.Command(bufferCmd, "-d", dest, "-p", pidFile, command)
+	fmt.Println("starting", bufferCmd, "-d", serverPath, "-p", pidFile, command)
+	cmd := exec.Command(bufferCmd, "-d", serverPath, "-p", pidFile, command)
 	cmd.Dir = workingDirectory
 
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		panic(err)
-	}
-
-	err = cmd.Start()
-	if err != nil {
-		panic(err)
-	}
-
-	buf := make([]byte, 1024)
-	_, err = stdout.Read(buf)
-	if err != nil {
-		panic(err)
-	}
-
-	s.BufProcess = cmd.Process
-
-	fmt.Println(string(buf))
+	go execWithOutput(cmd)
 }
 
 func (s *Server) PrepareServerPath(serverPath string) {
@@ -163,13 +157,17 @@ func (s *Server) PrepareServerPath(serverPath string) {
 }
 
 func (s *Server) DownloadFunpack(id string, dest string) {
-	fmt.Println("downloading funpack", id, dest)
-
 	funpackPath := filepath.Join(dest, "funpack")
 
-	exec.Command("rm", "-rf", funpackPath).Run()
-	exec.Command("cp", "-r",
-		"/Users/dave/code/minefold/funpacks/dummy.funpack", funpackPath).Run()
+	fmt.Println("downloading funpack", id, funpackPath)
+
+	// TODO this should be downloading/untarring from s3
+	cmd := exec.Command(
+		"rsync",
+		"-a",
+		"/home/vagrant/funpacks/team-fortress-2.funpack/",
+		funpackPath)
+	execWithOutput(cmd)
 
 	fmt.Println("downloaded funpack", id, dest)
 }
