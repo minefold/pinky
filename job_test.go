@@ -39,7 +39,7 @@ func TestServerJson(t *testing.T) {
 	}
 	serverJson, _ := json.Marshal(server)
 
-	expected := `{"id":"1234","funpack":"minecraft-essentials","port":4032,"ram":{"Min":1024,"Max":1024},"settings":{"banned":["atnan"],"game_mode":1,"new_player_can_build":false,"ops":["chrislloyd"],"seed":1.23456789e+08,"spawn_animals":true,"spawn_monsters":true,"whitelisted":["whatupdave"]}}`
+	expected := `{"id":"1234","funpack":"minecraft-essentials","port":4032,"ram":{"min":1024,"max":1024},"settings":{"banned":["atnan"],"game_mode":1,"new_player_can_build":false,"ops":["chrislloyd"],"seed":1.23456789e+08,"spawn_animals":true,"spawn_monsters":true,"whitelisted":["whatupdave"]}}`
 
 	if string(serverJson) != expected {
 		t.Error("expected", expected, "was", string(serverJson))

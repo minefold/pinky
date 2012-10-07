@@ -127,6 +127,31 @@ $SERVERS/1234/backup    (ditto)
 
 * (upstart restarts the process)
 
+## Redis state
+pinky/1/state up # or down, meaning start jobs will be ignored
+pinky/1/servers/1234 { # HASH
+  "pid"  => 2418,
+  "port" => 4083,
+  "state" => "up"
+}
+
+* Updated every 10 seconds:
+pinky/1/resources { # HASH
+  "disk" => {
+    "/dev/sda1" => { "used" => 1639, "total" => 8156 },
+    "/dev/md0"  => { "used" => 8553, "total" => 3438696 }
+  },
+  "ram" => { "used" => 1024, "total" => "4096" },
+}
+
 ## Example Jobs
 lpush jobs/1 "{\"name\":\"start\",\"serverId\":\"1234\",\"funpack\":\"minecraft-essentials\",\"ram\": { \"min\": 1024, \"max\": 1024  }, \"settings\" : { \"banned\": [\"atnan\"], \"game_mode\": 1, \"new_player_can_build\" : false,\"ops\": [\"chrislloyd\"],\"seed\": 123456789,\"spawn_animals\": true,    \"spawn_monsters\": true,\"whitelisted\": [\"whatupdave\"]  }}"
 lpush jobs/1 "{\"name\":\"stop\",\"serverId\":\"1234\"}"
+
+## TODO
+
+heartbeat
+graceful shutdown
+notify world of non-acceptance
+download funpack from s3
+log application crashes with bugsnag
