@@ -4,19 +4,30 @@ import (
 	// "bufio"
 	"encoding/json"
 	"fmt"
-	"log"
+	// "log"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime/debug"
+	"strconv"
+	"strings"
+	"syscall"
 	// "time"
 	"github.com/alphazero/Go-Redis"
 )
 
 type Job struct {
 	Name     string
-	Funpack  string
 	ServerId string
-	WorldId  string
+	Funpack  string
+	Ram      RamAllocation
+	Settings interface{}
+}
+
+type RamAllocation struct {
+	Min int `json:"min"`
+	Max int `json:"max"`
 }
 
 /*
@@ -37,8 +48,8 @@ func popRedisQueue(c chan Job, queue string) {
 	for {
 		bytes, e := client.Brpop(queue, 60)
 		if e != nil {
-			log.Println("error on BRPOP", e)
-			return
+			// TODO figure out if this is a real error
+			// most commonly it's the pop timing out
 		}
 
 		// If the pop times out, it just returns the key, no value
@@ -46,9 +57,17 @@ func popRedisQueue(c chan Job, queue string) {
 			// fmt.Sprintf("%s", bytes[1])
 			var job Job
 			json.Unmarshal(bytes[1], &job)
+
+			fmt.Println(string(bytes[1]), job)
+
 			c <- job
 		}
 	}
+}
+
+func fatal(err error) {
+	fmt.Println(err, debug.Stack())
+	panic(err)
 }
 
 func startServer(job Job, serverRoot string) {
@@ -65,10 +84,22 @@ func startServer(job Job, serverRoot string) {
 		serverPath := server.Path
 		pidFile := filepath.Join(serverRoot, fmt.Sprintf("%s.pid", job.ServerId))
 
+		// TODO reserve an unused port
+		port := 4032
+
 		server.PrepareServerPath(serverPath)
-		server.DownloadWorld(job.WorldId, serverPath)
+		server.DownloadWorld(job.ServerId, serverPath)
 		server.DownloadFunpack(job.Funpack, serverPath)
-		server.StartServerProcess(serverPath, pidFile)
+		server.WriteSettingsFile(serverPath,
+			pidFile,
+			port,
+			job.ServerId,
+			job.Funpack,
+			job.Ram,
+			job.Settings)
+		server.StartServerProcess(serverPath,
+			pidFile,
+			job.ServerId)
 
 		events := make(chan ServerEvent)
 
@@ -94,7 +125,11 @@ func startServer(job Job, serverRoot string) {
 
 func stopServer(job Job) {
 	if attemptStoppingTransition(job.ServerId) {
-		servers[job.ServerId].Stop()
+		server := servers[job.ServerId]
+		if server == nil {
+			panic(fmt.Sprintf("no server for %s", job.ServerId))
+		}
+		server.Stop()
 	} else {
 		fmt.Println("Ignoring stop request")
 	}
@@ -113,7 +148,7 @@ func createRedisClient() (client redis.Client) {
 func handleRedisError(err error) {
 	// TODO something more sane
 	if err != nil {
-		panic("redis connection error")
+		panic(err)
 	}
 }
 
@@ -186,6 +221,54 @@ func processJobs(jobChannel chan Job, serverRoot string) {
 	}
 }
 
+func isAlive(pid int) bool {
+	return syscall.Kill(pid, 0) == nil
+}
+
+// returns serverId, pid
+func readPidFromFile(pidFile string) (string, int) {
+	b, err := ioutil.ReadFile(pidFile)
+	if err != nil {
+		fatal(err)
+	}
+	pid, err := strconv.Atoi(string(b))
+	if err != nil {
+		fatal(err)
+	}
+
+	parts := strings.Split(filepath.Base(pidFile), ".")
+	fmt.Println(parts[0])
+
+	return parts[0], pid
+}
+
+func discoverRunningServers(serverRoot string) {
+	matches, err := filepath.Glob(filepath.Join(serverRoot, "*.pid"))
+	if err != nil {
+		fatal(err)
+	}
+	for _, pidFile := range matches {
+		fmt.Println(fmt.Sprintf("found pid_file=%s", pidFile))
+		serverId, pid := readPidFromFile(pidFile)
+
+		if isAlive(pid) {
+			fmt.Println("found running server", serverId, "pid", pid)
+
+			server := new(Server)
+			server.Id = serverId
+			server.Path = filepath.Join(serverRoot, server.Id)
+
+			servers[server.Id] = AttachServer(
+				serverId,
+				filepath.Join(serverRoot, server.Id),
+				pid)
+
+		} else {
+			fmt.Println("found dead process", pid)
+		}
+	}
+}
+
 func main() {
 	boxId := os.Args[1]
 
@@ -193,6 +276,8 @@ func main() {
 
 	serverRoot, _ := filepath.Abs("tmp/servers")
 	exec.Command("mkdir", "-p", serverRoot).Run()
+
+	discoverRunningServers(serverRoot)
 
 	jobChannel := make(chan Job)
 	boxQueueKey := fmt.Sprintf("jobs/%s", boxId)

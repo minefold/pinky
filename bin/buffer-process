@@ -123,7 +123,7 @@ end
 
 opts.parse!(ARGV)
 
-command = ARGV.first
+command = ARGV.join(' ')
 
 pipe_stdin_file, pipe_stdout_file = "#{pipe_directory}/pipe_stdin",  "#{pipe_directory}/pipe_stdout"
 

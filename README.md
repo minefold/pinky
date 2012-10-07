@@ -94,13 +94,14 @@ $SERVERS/1234/backup    (ditto)
     chatted
     * connected_players
 
-    opped               { actor_playername: 'whatupdave',
-                          target_playername: 'chrislloyd' }
-    deopped
-    whitelist_added
-    whitelist_removed
-    banned
-    pardoned
+    settings_changed { type: 'opped', actor_playername: 'whatupdave',
+                          target_playername: 'chrislloyd'
+      opped
+      deopped
+      whitelist_added
+      whitelist_removed
+      banned
+      pardoned
 
     info          { event: info, msg: 'bukkit outta date yall'}
     warning       { event: warning, type: 'stressed' }
@@ -127,4 +128,5 @@ $SERVERS/1234/backup    (ditto)
 * (upstart restarts the process)
 
 ## Example Jobs
-lpush jobs/1 "{\"name\":\"start\", \"funpack\":\"team-fortress-2\", \"serverId\":1234}"
+lpush jobs/1 "{\"name\":\"start\",\"serverId\":\"1234\",\"funpack\":\"minecraft-essentials\",\"ram\": { \"min\": 1024, \"max\": 1024  }, \"settings\" : { \"banned\": [\"atnan\"], \"game_mode\": 1, \"new_player_can_build\" : false,\"ops\": [\"chrislloyd\"],\"seed\": 123456789,\"spawn_animals\": true,    \"spawn_monsters\": true,\"whitelisted\": [\"whatupdave\"]  }}"
+lpush jobs/1 "{\"name\":\"stop\",\"serverId\":\"1234\"}"

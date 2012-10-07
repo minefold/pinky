@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,16 +14,30 @@ import (
 )
 
 type Server struct {
-	Id         string
-	Path       string
-	BufProcess *os.Process
-	Process    *os.Process
+	Id   string
+	Path string
+	Pid  int
+	Proc *ManagedProcess
 }
 
 type ServerEvent struct {
 	Event string
 	At    int64
 	Msg   string
+}
+
+type ServerSettings struct {
+	Id       string        `json:"id"`
+	Funpack  string        `json:"funpack"`
+	Port     int           `json:"port"`
+	Ram      RamAllocation `json:"ram"`
+	Settings interface{}   `json:"settings"`
+}
+
+func AttachServer(id string, path string, pid int) *Server {
+	s := &Server{Id: id, Path: path, Pid: pid}
+	s.Proc = NewManagedProcess(pid)
+	return s
 }
 
 func (s *Server) stdoutPath() string {
@@ -80,26 +95,22 @@ func (s *Server) Monitor(c chan ServerEvent) {
 func (s *Server) ensureServerStopped() {
 	timeout := make(chan bool, 1)
 	go func() {
-		time.Sleep(10 * time.Second)
+		time.Sleep(30 * time.Second)
 		timeout <- true
 	}()
 
 	wait := make(chan bool, 1)
 	go func() {
-		_, waitErr := s.BufProcess.Wait()
-		if waitErr == nil {
-			wait <- true
-		} else {
-			fmt.Println("process wait error", waitErr)
-		}
+		s.Proc.Wait()
+		wait <- true
 	}()
 
 	select {
 	case <-wait:
 		fmt.Println("process exited")
 	case <-timeout:
-		fmt.Println("timeout waiting for process exit. killing process")
-		s.BufProcess.Kill()
+		fmt.Println("timeout waiting for process exit. killing process", s.Pid)
+		syscall.Kill(s.Pid, syscall.SIGTERM)
 	}
 }
 
@@ -117,6 +128,7 @@ func (s *Server) Stop() {
 	defer stdin.Close()
 
 	stdin.WriteString("stop\n")
+	go s.ensureServerStopped()
 }
 
 func execWithOutput(cmd *exec.Cmd) {
@@ -137,20 +149,70 @@ func execWithOutput(cmd *exec.Cmd) {
 	cmd.Wait()
 }
 
-func (s *Server) StartServerProcess(serverPath string, pidFile string) {
+func (s *Server) WriteSettingsFile(
+	serverPath string,
+	pidFile string,
+	port int,
+	serverId string,
+	funpack string,
+	ram RamAllocation,
+	settings interface{}) {
+
+	serverFile := filepath.Join(serverPath, "server.json")
+	// settingsJson, err := settings.MarshalJSON()
+	// if err != nil {
+	// 	panic(err)
+	// }
+	server := ServerSettings{
+		Id:       serverId,
+		Funpack:  funpack,
+		Port:     port,
+		Ram:      ram,
+		Settings: settings,
+	}
+	serverJson, err := json.Marshal(server)
+	if err != nil {
+		panic(err)
+	}
+
+	ioutil.WriteFile(serverFile, serverJson, 0644)
+}
+
+func (s *Server) StartServerProcess(
+	serverPath string,
+	pidFile string,
+	serverId string) {
+
+	serverFile := filepath.Join(serverPath, "server.json")
 	command := filepath.Join(serverPath, "funpack", "bin", "run")
-	workingDirectory := filepath.Join(serverPath, "funpack")
+
+	// TODO some check to know if a funpack should run out of
+	// a working directory like Minecraft does or out of the
+	// funpack/server directory like TF2 does
+	// maybe a check for the existence of a backup script
+	workingDirectory := filepath.Join(serverPath, "working")
 
 	bufferCmd, _ := filepath.Abs("bin/buffer-process")
 
-	fmt.Println("starting", bufferCmd, "-d", serverPath, "-p", pidFile, command)
-	cmd := exec.Command(bufferCmd, "-d", serverPath, "-p", pidFile, command)
+	fmt.Println("starting", workingDirectory, bufferCmd, "-d", serverPath, "-p", pidFile, command, serverFile)
+	cmd := exec.Command(bufferCmd, "-d", serverPath, "-p", pidFile, command, serverFile)
 	cmd.Dir = workingDirectory
 
 	go execWithOutput(cmd)
+
+	// TODO wait for pid
+	time.Sleep(3 * time.Second)
+	_, s.Pid = readPidFromFile(pidFile)
+
+	s.Proc = NewManagedProcess(cmd.Process.Pid)
 }
 
 func (s *Server) PrepareServerPath(serverPath string) {
+	// TODO some check to know if a funpack should run out of
+	// a working directory like Minecraft does or out of the
+	// funpack/server directory like TF2 does
+	// maybe a check for the existence of a backup script
+
 	workingDirectory := filepath.Join(serverPath, "working")
 	exec.Command("rm", "-rf", workingDirectory).Run()
 	exec.Command("mkdir", "-p", workingDirectory).Run()
@@ -165,7 +227,7 @@ func (s *Server) DownloadFunpack(id string, dest string) {
 	cmd := exec.Command(
 		"rsync",
 		"-a",
-		"/home/vagrant/funpacks/team-fortress-2.funpack/",
+		"/home/vagrant/funpacks/minecraft-essentials/",
 		funpackPath)
 	execWithOutput(cmd)
 
