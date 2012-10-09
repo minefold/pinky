@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	// "log"
+	"github.com/kristiankristensen/Go-Redis"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -13,8 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
-	// "time"
-	"github.com/alphazero/Go-Redis"
+	"time"
 )
 
 type Job struct {
@@ -269,6 +269,35 @@ func discoverRunningServers(serverRoot string) {
 	}
 }
 
+type hbJson struct {
+	Disk  map[string]DiskUsage `json:"disk"`
+	Procs map[string]ProcUsage `json:"procs"`
+}
+
+func heartbeatJson() []byte {
+	procUsages, _ := CollectProcUsage()
+	diskUsages, _ := CollectDiskUsage()
+
+	v := hbJson{
+		Disk:  make(map[string]DiskUsage),
+		Procs: make(map[string]ProcUsage),
+	}
+
+	for _, diskUsage := range diskUsages {
+		v.Disk[diskUsage.Name] = diskUsage
+	}
+	for _, procUsage := range procUsages {
+		v.Procs[fmt.Sprintf("%d", procUsage.Pid)] = procUsage
+	}
+
+	json, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+
+	return json
+}
+
 func main() {
 	boxId := os.Args[1]
 
@@ -283,12 +312,15 @@ func main() {
 	boxQueueKey := fmt.Sprintf("jobs/%s", boxId)
 	go popRedisQueue(jobChannel, boxQueueKey)
 
+	// start heartbeat
+	ticker := time.NewTicker(time.Second * 10)
+	go func() {
+		for _ = range ticker.C {
+			json := heartbeatJson()
+			redisClient.Setex("pinky/1/resources", 20, json)
+		}
+	}()
+
 	fmt.Println("processing queue:", boxQueueKey)
 	processJobs(jobChannel, serverRoot)
-
-	/*
-	   TODO figure out what the current state is
-	   ie. find out what servers are currently running, update state, monitor etc.
-	*/
-
 }

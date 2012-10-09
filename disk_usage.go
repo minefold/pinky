@@ -7,12 +7,22 @@ import (
 )
 
 type DiskUsage struct {
-	Name    string
-	MbUsed  int
-	MbTotal int
+	Name    string `json:"name"`
+	MbUsed  int    `json:"used"`
+	MbTotal int    `json:"total"`
 }
 
-func collectDiskUsage() ([]DiskUsage, error) {
+func splitColumns(line string, max int) []string {
+	cols := make([]string, 0, max)
+	for _, f := range strings.Split(line, " ") {
+		if len(f) > 0 {
+			cols = append(cols, f)
+		}
+	}
+	return cols
+}
+
+func CollectDiskUsage() ([]DiskUsage, error) {
 	out, err := exec.Command("df", "-m").Output()
 	if err != nil {
 		return nil, err
@@ -28,12 +38,7 @@ func collectDiskUsage() ([]DiskUsage, error) {
 		}
 
 		// extract space separated columnds
-		cols := make([]string, 0, 10)
-		for _, f := range strings.Split(l, " ") {
-			if len(f) > 0 {
-				cols = append(cols, f)
-			}
-		}
+		cols := splitColumns(l, 10)
 
 		// create struct
 		total, _ := strconv.Atoi(cols[1])
