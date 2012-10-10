@@ -1,7 +1,6 @@
 package main
 
 import (
-	// "bufio"
 	"encoding/json"
 	"fmt"
 	// "log"
@@ -9,6 +8,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime/debug"
 	"strconv"
@@ -40,8 +40,9 @@ type RamAllocation struct {
 */
 
 var redisClient redis.Client
-
+var boxId string
 var servers = map[string]*Server{}
+var workInProgress = map[string]string{}
 
 func popRedisQueue(c chan Job, queue string) {
 	client := createRedisClient()
@@ -101,26 +102,27 @@ func startServer(job Job, serverRoot string) {
 			pidFile,
 			job.ServerId)
 
-		events := make(chan ServerEvent)
-
-		go server.Monitor(events)
-
-		for event := range events {
-			fmt.Println(event)
-			switch event.Event {
-			case "started":
-				transitionStartingToUp(job.ServerId)
-			case "stopping":
-				attemptStoppingTransition(job.ServerId)
-			}
-		}
-		transitionStoppingToStopped(job.ServerId)
-		fmt.Println("server stopped")
-		exec.Command("rm", "-f", pidFile).Run()
-		delete(servers, job.ServerId)
+		events := server.Monitor()
+		go processServerEvents(job.ServerId, pidFile, events)
 	} else {
 		fmt.Println("Ignoring start request")
 	}
+}
+
+func processServerEvents(serverId string, pidFile string, events chan ServerEvent) {
+	for event := range events {
+		fmt.Println(event)
+		switch event.Event {
+		case "started":
+			transitionStartingToUp(serverId)
+		case "stopping":
+			attemptStoppingTransition(serverId)
+		}
+	}
+	transitionStoppingToStopped(serverId)
+	fmt.Println("server stopped")
+	exec.Command("rm", "-f", pidFile).Run()
+	delete(servers, serverId)
 }
 
 func stopServer(job Job) {
@@ -156,12 +158,37 @@ func stateKey(serverId string) string {
 	return fmt.Sprintf("state/%s", serverId)
 }
 
-func stateTransition(serverId string, from string, to string, enforceStartingCondition bool) bool {
+func retry(maxRetries int, delay time.Duration, work func() error) error {
+	err := work()
+	retries := 0
+	for err != nil && retries < maxRetries {
+		time.Sleep(delay)
+		err = work()
+		retries += 1
+	}
+	return err
+}
+
+func redisGet(key string) []byte {
+	var value []byte
+	err := retry(5, 100*time.Millisecond, func() error {
+		var err error
+		value, err = redisClient.Get(key)
+		return err
+	})
+	handleRedisError(err)
+	return value
+}
+
+func stateTransition(
+	serverId string,
+	from string,
+	to string,
+	enforceStartingCondition bool) bool {
+
 	// TODO race condition?
 	serverStateKey := stateKey(serverId)
-
-	oldValue, err := redisClient.Get(serverStateKey)
-	handleRedisError(err)
+	oldValue := redisGet(serverStateKey)
 
 	if string(oldValue) != from {
 		if enforceStartingCondition {
@@ -204,15 +231,44 @@ func transitionStoppingToStopped(serverId string) {
 	stateTransition(serverId, "stopping", "", true)
 }
 
-func processJobs(jobChannel chan Job, serverRoot string) {
+func getState() []byte {
+	key := fmt.Sprintf("pinky/%s/state", boxId)
+	return redisGet(key)
+}
+
+func setStateTo(state string) {
+	key := fmt.Sprintf("pinky/%s/state", boxId)
+	redisClient.Set(key, []byte(state))
+}
+
+func uuid() string {
+	id, _ := exec.Command("uuidgen").Output()
+	return strings.TrimSpace(string(id))
+}
+
+func doWork(empty chan bool, name string, work func()) {
+	id := uuid()
+	workInProgress[id] = id
+	work()
+	delete(workInProgress, id)
+	empty <- len(workInProgress) == 0
+}
+
+func processJobs(empty chan bool, jobChannel chan Job, serverRoot string) {
 	for {
 		job := <-jobChannel
-
-		fmt.Println(job)
+		if string(getState()) == "down" {
+			fmt.Println("ignoring job: pinky is down")
+			continue
+		}
 
 		switch job.Name {
+
 		case "start":
-			go startServer(job, serverRoot)
+			go doWork(empty, "start", func() {
+				startServer(job, serverRoot)
+			})
+
 		case "stop":
 			go stopServer(job)
 		default:
@@ -263,6 +319,9 @@ func discoverRunningServers(serverRoot string) {
 				filepath.Join(serverRoot, server.Id),
 				pid)
 
+			events := server.Monitor()
+			go processServerEvents(serverId, pidFile, events)
+
 		} else {
 			fmt.Println("found dead process", pid)
 		}
@@ -298,8 +357,28 @@ func heartbeatJson() []byte {
 	return json
 }
 
+func quitWhenEmpty(empty chan bool) {
+	for finished := range empty {
+		if finished {
+			os.Exit(0)
+		} else {
+			fmt.Println(
+				fmt.Sprintf("Quitting. %d jobs remaining",
+					len(workInProgress)))
+		}
+	}
+}
+
 func main() {
-	boxId := os.Args[1]
+	defer func() {
+		if r := recover(); r != nil {
+			// TODO bugsnag
+			fmt.Println("ERMAHGERD FERTEL ERRERRRR!")
+			panic(r)
+		}
+	}()
+
+	boxId = os.Args[1]
 
 	redisClient = createRedisClient()
 
@@ -317,10 +396,31 @@ func main() {
 	go func() {
 		for _ = range ticker.C {
 			json := heartbeatJson()
-			redisClient.Setex("pinky/1/resources", 20, json)
+			key := fmt.Sprintf("pinky/%s/resources", boxId)
+
+			redisClient.Setex(key, 20, json)
 		}
 	}()
 
-	fmt.Println("processing queue:", boxQueueKey)
-	processJobs(jobChannel, serverRoot)
+	// trap signals
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGQUIT)
+
+	empty := make(chan bool, 100)
+
+	go func() {
+		for {
+			<-sig
+			setStateTo("down")
+			if len(workInProgress) == 0 {
+				os.Exit(0)
+			}
+			quitWhenEmpty(empty)
+		}
+	}()
+
+	setStateTo("up")
+	fmt.Println(
+		fmt.Sprintf("[%d] processing queue: %s", os.Getpid(), boxQueueKey))
+	processJobs(empty, jobChannel, serverRoot)
 }

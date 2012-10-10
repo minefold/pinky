@@ -150,8 +150,6 @@ lpush jobs/1 "{\"name\":\"stop\",\"serverId\":\"1234\"}"
 
 ## TODO
 
-heartbeat
-graceful shutdown
-notify world of non-acceptance
 download funpack from s3
 log application crashes with bugsnag
+port allocation

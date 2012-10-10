@@ -74,22 +74,32 @@ func (s *Server) processStdout(c chan ServerEvent) {
 	close(c)
 }
 
-func (s *Server) Monitor(c chan ServerEvent) {
+func (s *Server) Monitor() chan ServerEvent {
 	// TODO Wait for file to exist
 	time.Sleep(30 * time.Second)
 
-	events := make(chan ServerEvent)
-	go s.processStdout(events)
+	// we have two channels, where we copy incoming events to outgoing events
+	// but on the stop event we intercept so we can make sure the server
+	// finished stopping. There is probably a better way to do this
 
-	for event := range events {
-		switch event.Event {
-		case "stopping":
-			go s.ensureServerStopped()
+	eventsIn := make(chan ServerEvent)
+	eventsOut := make(chan ServerEvent)
+
+	go s.processStdout(eventsIn)
+
+	go func() {
+		for event := range eventsIn {
+			switch event.Event {
+			case "stopping":
+				go s.ensureServerStopped()
+			}
+			eventsOut <- event
 		}
-		c <- event
-	}
 
-	close(c)
+		close(eventsOut)
+	}()
+
+	return eventsOut
 }
 
 func (s *Server) ensureServerStopped() {
