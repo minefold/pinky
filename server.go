@@ -191,7 +191,7 @@ func (s *Server) WriteSettingsFile(
 func (s *Server) StartServerProcess(
 	serverPath string,
 	pidFile string,
-	serverId string) {
+	serverId string) (pid int) {
 
 	serverFile := filepath.Join(serverPath, "server.json")
 	command := filepath.Join(serverPath, "funpack", "bin", "run")
@@ -215,6 +215,7 @@ func (s *Server) StartServerProcess(
 	_, s.Pid = readPidFromFile(pidFile)
 
 	s.Proc = NewManagedProcess(cmd.Process.Pid)
+	return s.Pid
 }
 
 func (s *Server) PrepareServerPath(serverPath string) {

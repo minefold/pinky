@@ -11,24 +11,6 @@ pinky <box-id>
 brpop /box/1/queue
   - type (start|stop|broadcast|tell|multi)
 
-### State
-
-box states:
-box/1/state
-  - starting
-  - up
-  - stopping
-  - stopped
-
-server states:
-box/1/server/1/state
-  - starting
-  - up
-  - stopping
-  - stopped
-
-box/1/server/1/queue
-
 ### Ignored commands
 * While stopping or starting ignore commands
 * While running or stopped execute commands
@@ -114,9 +96,16 @@ $SERVERS/1234/backup    (ditto)
   - pinky updates state of servers and box
 
 ## Stopping a server
-* Stop the process (send stop command to the server)
-* If the process doesn't stop, kill it (30 sec)
+* set server/state/<server-id> to "stopping"
+* Stop the process
+  - send stop command
+  - wait 30 seconds
+  - kill process if still alive
 * Run the backup if necessary
+* remove server artifacts
+  - del server/state/<server-id>
+  - remove pid file
+  - remove server path
 
 ## Deployment
 
@@ -128,12 +117,14 @@ $SERVERS/1234/backup    (ditto)
 * (upstart restarts the process)
 
 ## Redis state
-pinky/1/state up # or down, meaning start jobs will be ignored
-pinky/1/servers/1234 { # HASH
+pinky/state/1 up # or down, meaning start jobs will be ignored
+
+pinky/1/servers/1234 { # JSON
   "pid"  => 2418,
-  "port" => 4083,
-  "state" => "up"
+  "port" => 4083
 }
+
+server/state/1234 "up"
 
 * Updated every 10 seconds:
 pinky/1/resources { # HASH
@@ -150,6 +141,11 @@ lpush jobs/1 "{\"name\":\"stop\",\"serverId\":\"1234\"}"
 
 ## TODO
 
+backups
 download funpack from s3
 log application crashes with bugsnag
 port allocation
+support BROADCAST job
+support TELL job
+push job accept status (accepted|ignored)
+push job complete status (succeeded|failed)

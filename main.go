@@ -30,9 +30,14 @@ type RamAllocation struct {
 	Max int `json:"max"`
 }
 
+type RedisServerInfo struct {
+	Pid  int `json:"pid"`
+	Port int `json:"port"`
+}
+
 /*
 	Global Redis storage
-	(string) state/{serverId}  [starting|up|stopping]
+	(string) server/state/{serverId}  [starting|up|stopping]
 
 	Local Redis storage
 	TODO support TCP/UDP port ranges
@@ -43,6 +48,7 @@ var redisClient redis.Client
 var boxId string
 var servers = map[string]*Server{}
 var workInProgress = map[string]string{}
+var serverRoot string
 
 func popRedisQueue(c chan Job, queue string) {
 	client := createRedisClient()
@@ -71,7 +77,15 @@ func fatal(err error) {
 	panic(err)
 }
 
-func startServer(job Job, serverRoot string) {
+func serverPath(serverId string) string {
+	return filepath.Join(serverRoot, serverId)
+}
+
+func pidFile(serverId string) string {
+	return filepath.Join(serverRoot, fmt.Sprintf("%s.pid", serverId))
+}
+
+func startServer(job Job) {
 	if attemptStartingTransition(job.ServerId) {
 
 		server := new(Server)
@@ -83,7 +97,7 @@ func startServer(job Job, serverRoot string) {
 		fmt.Println("Starting world", job.ServerId)
 
 		serverPath := server.Path
-		pidFile := filepath.Join(serverRoot, fmt.Sprintf("%s.pid", job.ServerId))
+		pidFile := pidFile(job.ServerId)
 
 		// TODO reserve an unused port
 		port := 4032
@@ -98,18 +112,28 @@ func startServer(job Job, serverRoot string) {
 			job.Funpack,
 			job.Ram,
 			job.Settings)
-		server.StartServerProcess(serverPath,
+		pid := server.StartServerProcess(serverPath,
 			pidFile,
 			job.ServerId)
 
 		events := server.Monitor()
-		go processServerEvents(job.ServerId, pidFile, events)
+		go processServerEvents(job.ServerId, events)
+
+		serverInfo := RedisServerInfo{Pid: pid, Port: port}
+		serverJson, err := json.Marshal(serverInfo)
+		if err != nil {
+			panic(err)
+		}
+		redisClient.Set(
+			fmt.Sprintf("pinky/%s/servers/%s", boxId, job.ServerId),
+			serverJson)
+
 	} else {
 		fmt.Println("Ignoring start request")
 	}
 }
 
-func processServerEvents(serverId string, pidFile string, events chan ServerEvent) {
+func processServerEvents(serverId string, events chan ServerEvent) {
 	for event := range events {
 		fmt.Println(event)
 		switch event.Event {
@@ -119,9 +143,9 @@ func processServerEvents(serverId string, pidFile string, events chan ServerEven
 			attemptStoppingTransition(serverId)
 		}
 	}
-	transitionStoppingToStopped(serverId)
+	transitionToStopped(serverId)
+	removeServerArtifacts(serverId)
 	fmt.Println("server stopped")
-	exec.Command("rm", "-f", pidFile).Run()
 	delete(servers, serverId)
 }
 
@@ -135,6 +159,16 @@ func stopServer(job Job) {
 	} else {
 		fmt.Println("Ignoring stop request")
 	}
+}
+
+func removeServerArtifacts(serverId string) {
+	exec.Command("rm", "-f", pidFile(serverId)).Run()
+	exec.Command("rm", "-rf", serverPath(serverId)).Run()
+
+	redisClient.Del(
+		fmt.Sprintf("pinky/%s/servers/%s", boxId, serverId))
+	redisClient.Del(
+		fmt.Sprintf("server/state/%s", serverId))
 }
 
 func createRedisClient() (client redis.Client) {
@@ -155,7 +189,7 @@ func handleRedisError(err error) {
 }
 
 func stateKey(serverId string) string {
-	return fmt.Sprintf("state/%s", serverId)
+	return fmt.Sprintf("server/state/%s", serverId)
 }
 
 func retry(maxRetries int, delay time.Duration, work func() error) error {
@@ -170,14 +204,25 @@ func retry(maxRetries int, delay time.Duration, work func() error) error {
 }
 
 func redisGet(key string) []byte {
-	var value []byte
+	var result []byte
 	err := retry(5, 100*time.Millisecond, func() error {
 		var err error
-		value, err = redisClient.Get(key)
+		result, err = redisClient.Get(key)
 		return err
 	})
 	handleRedisError(err)
-	return value
+	return result
+}
+
+func redisDel(key string) bool {
+	var result bool
+	err := retry(5, 100*time.Millisecond, func() error {
+		var err error
+		result, err = redisClient.Del(key)
+		return err
+	})
+	handleRedisError(err)
+	return result
 }
 
 func stateTransition(
@@ -227,8 +272,8 @@ func transitionUpToStopping(serverId string) {
 	stateTransition(serverId, "up", "stopping", true)
 }
 
-func transitionStoppingToStopped(serverId string) {
-	stateTransition(serverId, "stopping", "", true)
+func transitionToStopped(serverId string) {
+	stateTransition(serverId, "stopping", "", false)
 }
 
 func getState() []byte {
@@ -246,7 +291,7 @@ func uuid() string {
 	return strings.TrimSpace(string(id))
 }
 
-func doWork(empty chan bool, name string, work func()) {
+func doWork(empty chan bool, work func()) {
 	id := uuid()
 	workInProgress[id] = id
 	work()
@@ -254,7 +299,7 @@ func doWork(empty chan bool, name string, work func()) {
 	empty <- len(workInProgress) == 0
 }
 
-func processJobs(empty chan bool, jobChannel chan Job, serverRoot string) {
+func processJobs(empty chan bool, jobChannel chan Job) {
 	for {
 		job := <-jobChannel
 		if string(getState()) == "down" {
@@ -265,12 +310,14 @@ func processJobs(empty chan bool, jobChannel chan Job, serverRoot string) {
 		switch job.Name {
 
 		case "start":
-			go doWork(empty, "start", func() {
-				startServer(job, serverRoot)
+			go doWork(empty, func() {
+				startServer(job)
 			})
 
 		case "stop":
-			go stopServer(job)
+			go doWork(empty, func() {
+				stopServer(job)
+			})
 		default:
 			fmt.Println("Unknown job", job)
 		}
@@ -293,19 +340,20 @@ func readPidFromFile(pidFile string) (string, int) {
 	}
 
 	parts := strings.Split(filepath.Base(pidFile), ".")
-	fmt.Println(parts[0])
 
 	return parts[0], pid
 }
 
-func discoverRunningServers(serverRoot string) {
+func discoverRunningServers() {
 	matches, err := filepath.Glob(filepath.Join(serverRoot, "*.pid"))
 	if err != nil {
 		fatal(err)
 	}
 	for _, pidFile := range matches {
-		fmt.Println(fmt.Sprintf("found pid_file=%s", pidFile))
 		serverId, pid := readPidFromFile(pidFile)
+		serverPath := filepath.Join(serverRoot, serverId)
+		fmt.Println(
+			fmt.Sprintf("found pid_file=%s path=%s", pidFile, serverPath))
 
 		if isAlive(pid) {
 			fmt.Println("found running server", serverId, "pid", pid)
@@ -320,10 +368,11 @@ func discoverRunningServers(serverRoot string) {
 				pid)
 
 			events := server.Monitor()
-			go processServerEvents(serverId, pidFile, events)
+			go processServerEvents(serverId, events)
 
 		} else {
 			fmt.Println("found dead process", pid)
+			removeServerArtifacts(serverId)
 		}
 	}
 }
@@ -373,19 +422,21 @@ func main() {
 	defer func() {
 		if r := recover(); r != nil {
 			// TODO bugsnag
-			fmt.Println("ERMAHGERD FERTEL ERRERRRR!")
+			fmt.Println("ERMAHGERD FERTEL ERRERRRR! ಠ_ಠ")
 			panic(r)
 		}
 	}()
 
 	boxId = os.Args[1]
 
+	// TODO use ENV
+	serverRoot, _ = filepath.Abs("tmp/servers")
+
 	redisClient = createRedisClient()
 
-	serverRoot, _ := filepath.Abs("tmp/servers")
 	exec.Command("mkdir", "-p", serverRoot).Run()
 
-	discoverRunningServers(serverRoot)
+	discoverRunningServers()
 
 	jobChannel := make(chan Job)
 	boxQueueKey := fmt.Sprintf("jobs/%s", boxId)
@@ -411,6 +462,7 @@ func main() {
 	go func() {
 		for {
 			<-sig
+			fmt.Println("stopping pinky")
 			setStateTo("down")
 			if len(workInProgress) == 0 {
 				os.Exit(0)
@@ -421,6 +473,9 @@ func main() {
 
 	setStateTo("up")
 	fmt.Println(
-		fmt.Sprintf("[%d] processing queue: %s", os.Getpid(), boxQueueKey))
-	processJobs(empty, jobChannel, serverRoot)
+		fmt.Sprintf("[%d] queue=%s servers=%s",
+			os.Getpid(),
+			boxQueueKey,
+			serverRoot))
+	processJobs(empty, jobChannel)
 }
