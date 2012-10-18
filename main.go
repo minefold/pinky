@@ -22,6 +22,7 @@ type Job struct {
 	ServerId string
 	Funpack  string
 	Ram      RamAllocation
+	World    string
 	Settings interface{}
 }
 
@@ -100,10 +101,10 @@ func startServer(job Job) {
 		pidFile := pidFile(job.ServerId)
 
 		// TODO reserve an unused port
-		port := 4032
+		port := 20000
 
 		server.PrepareServerPath(serverPath)
-		server.DownloadWorld(job.ServerId, serverPath)
+		server.DownloadWorld(job.World, serverPath)
 		server.DownloadFunpack(job.Funpack, serverPath)
 		server.WriteSettingsFile(serverPath,
 			pidFile,

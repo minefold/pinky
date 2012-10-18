@@ -1,7 +1,9 @@
 Vagrant::Config.run do |config|
   config.vm.box = "base"
 
-  [27015, 28015].each do |port|
+  config.vm.network :hostonly, "10.10.10.15"
+  
+  [20000, 27015, 28015].each do |port|
     config.vm.forward_port port, port
     config.vm.forward_port port, port, protocol: 'udp'
   end

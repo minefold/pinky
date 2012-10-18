@@ -142,6 +142,7 @@ func (s *Server) Stop() {
 }
 
 func execWithOutput(cmd *exec.Cmd) {
+	fmt.Println(cmd)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		fmt.Println(err)
@@ -156,7 +157,10 @@ func execWithOutput(cmd *exec.Cmd) {
 	}
 	go io.Copy(os.Stdout, stdout)
 	go io.Copy(os.Stderr, stderr)
-	cmd.Wait()
+	err = cmd.Wait()
+	if err != nil {
+		panic(err)
+	}
 }
 
 func (s *Server) WriteSettingsFile(
@@ -229,8 +233,8 @@ func (s *Server) PrepareServerPath(serverPath string) {
 	exec.Command("mkdir", "-p", workingDirectory).Run()
 }
 
-func (s *Server) DownloadFunpack(id string, dest string) {
-	funpackPath := filepath.Join(dest, "funpack")
+func (s *Server) DownloadFunpack(id string, serverPath string) {
+	funpackPath := filepath.Join(serverPath, "funpack")
 
 	fmt.Println("downloading funpack", id, funpackPath)
 
@@ -242,12 +246,16 @@ func (s *Server) DownloadFunpack(id string, dest string) {
 		funpackPath)
 	execWithOutput(cmd)
 
-	fmt.Println("downloaded funpack", id, dest)
+	fmt.Println("downloaded funpack", id, serverPath)
 }
 
-func (s *Server) DownloadWorld(id string, dest string) {
-	fmt.Println("downloading world", id, dest)
-	fmt.Println("downloaded world", id, dest)
+func (s *Server) DownloadWorld(world string, serverPath string) {
+	restoreDirBin, _ := filepath.Abs("bin/restore-dir")
+
+	cmd := exec.Command(restoreDirBin, world)
+	cmd.Dir = filepath.Join(serverPath, "working")
+
+	execWithOutput(cmd)
 }
 
 func (s *Server) BackupWorld(id string, dest string) {
