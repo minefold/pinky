@@ -31,8 +31,6 @@ end
 
 id, destination, *compress_args = ARGV
 
-compress_args ||= ['--include level --exclude .']
-
 backup_dir = File.expand_path File.join destination, 'backup'
 working_dir = File.expand_path File.join destination, 'working'
 
@@ -42,12 +40,7 @@ tar_size = nil
 working_dir_size = dir_size(working_dir)
 
 Dir.chdir(working_dir) do
-  # as a safeguard I'm uploading backup copies
-  keys = [
-    "worlds/#{id}/world-data.incremental.tar.lzo",
-    "world-backups/#{id}/world-data.incremental.#{Time.now.to_i}.tar.lzo"
-  ].each do |key|
-    run "#{ARCHIVE_DIR} s3://#{BUCKET}/#{key} #{compress_args.join(' ')}"
-  end
+  key = "worlds/#{id}/#{id}.#{Time.now.to_i}.tar.lzo"
+  run "#{ARCHIVE_DIR} s3://#{BUCKET}/#{key} #{compress_args.join(' ')}"
 end
 

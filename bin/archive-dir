@@ -11,7 +11,9 @@ require 'tempfile'
 
 S3CURL = File.expand_path File.join __FILE__, '../s3curl'
 
-REMOTE, *COMPRESS_ARGS = ARGV
+REMOTE, *compress_args = ARGV
+
+compress_args ||= '.'
 
 if !(REMOTE =~ /s3:\/\/([\w-]+)\/(.*)/)
   abort "usage: #{$0} <remote-file>"
@@ -40,6 +42,6 @@ def run cmd
 end
 
 Tempfile.open(File.basename(key)) do |f|
-  run "tar #{compression} -cf #{f.path} #{COMPRESS_ARGS.join(' ')}"
+  run "tar #{compression} -cf #{f.path} #{compress_args.join(' ')}"
   run "#{S3CURL} --put '#{f.path}' -- https://#{bucket}.s3.amazonaws.com/#{key} --silent --show-error"
 end

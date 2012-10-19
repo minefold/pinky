@@ -10,7 +10,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"runtime/debug"
+	// "runtime/debug"
 	"strconv"
 	"strings"
 	"syscall"
@@ -58,6 +58,7 @@ func popRedisQueue(c chan Job, queue string) {
 		if e != nil {
 			// TODO figure out if this is a real error
 			// most commonly it's the pop timing out
+			fmt.Println("redis error", e)
 		}
 
 		// If the pop times out, it just returns the key, no value
@@ -69,13 +70,10 @@ func popRedisQueue(c chan Job, queue string) {
 			fmt.Println(string(bytes[1]), job)
 
 			c <- job
+		} else {
+			fmt.Println("redis pop timed out?")
 		}
 	}
-}
-
-func fatal(err error) {
-	fmt.Println(err, debug.Stack())
-	panic(err)
 }
 
 func serverPath(serverId string) string {
@@ -97,25 +95,20 @@ func startServer(job Job) {
 
 		fmt.Println("Starting world", job.ServerId)
 
-		serverPath := server.Path
 		pidFile := pidFile(job.ServerId)
 
 		// TODO reserve an unused port
 		port := 20000
 
-		server.PrepareServerPath(serverPath)
-		server.DownloadWorld(job.World, serverPath)
-		server.DownloadFunpack(job.Funpack, serverPath)
-		server.WriteSettingsFile(serverPath,
-			pidFile,
+		server.PrepareServerPath()
+		server.DownloadWorld(job.World)
+		server.DownloadFunpack(job.Funpack)
+		server.WriteSettingsFile(
 			port,
-			job.ServerId,
 			job.Funpack,
 			job.Ram,
 			job.Settings)
-		pid := server.StartServerProcess(serverPath,
-			pidFile,
-			job.ServerId)
+		pid := server.StartServerProcess(pidFile)
 
 		events := server.Monitor()
 		go processServerEvents(job.ServerId, events)
@@ -144,6 +137,17 @@ func processServerEvents(serverId string, events chan ServerEvent) {
 			attemptStoppingTransition(serverId)
 		}
 	}
+
+	server := servers[serverId]
+	if server == nil {
+		panic(fmt.Sprintf("no server for %s", serverId))
+	}
+
+	// TODO check if we need to do a backup
+	// eg. the world didn't start properly or
+	// this game has no persistent state
+	server.BackupWorld()
+
 	transitionToStopped(serverId)
 	removeServerArtifacts(serverId)
 	fmt.Println("server stopped")
@@ -333,11 +337,11 @@ func isAlive(pid int) bool {
 func readPidFromFile(pidFile string) (string, int) {
 	b, err := ioutil.ReadFile(pidFile)
 	if err != nil {
-		fatal(err)
+		panic(err)
 	}
 	pid, err := strconv.Atoi(string(b))
 	if err != nil {
-		fatal(err)
+		panic(err)
 	}
 
 	parts := strings.Split(filepath.Base(pidFile), ".")
@@ -348,27 +352,23 @@ func readPidFromFile(pidFile string) (string, int) {
 func discoverRunningServers() {
 	matches, err := filepath.Glob(filepath.Join(serverRoot, "*.pid"))
 	if err != nil {
-		fatal(err)
+		panic(err)
 	}
 	for _, pidFile := range matches {
 		serverId, pid := readPidFromFile(pidFile)
-		serverPath := filepath.Join(serverRoot, serverId)
+		serverPath := serverPath(serverId)
 		fmt.Println(
 			fmt.Sprintf("found pid_file=%s path=%s", pidFile, serverPath))
 
 		if isAlive(pid) {
 			fmt.Println("found running server", serverId, "pid", pid)
 
-			server := new(Server)
-			server.Id = serverId
-			server.Path = filepath.Join(serverRoot, server.Id)
-
-			servers[server.Id] = AttachServer(
+			servers[serverId] = AttachServer(
 				serverId,
-				filepath.Join(serverRoot, server.Id),
+				serverPath,
 				pid)
 
-			events := server.Monitor()
+			events := servers[serverId].Monitor()
 			go processServerEvents(serverId, events)
 
 		} else {

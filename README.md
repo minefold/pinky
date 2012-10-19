@@ -6,6 +6,12 @@ Pinky is a daemon process that starts, monitors and stops servers on a single in
 
 pinky <box-id>
 
+## Required ENV
+
+AWS_ACCESS_KEY=DLHDLKJHDLKJHDLKH
+AWS_SECRET_KEY=DSLKSJDHFLDKJHFLDSKJHFDSLKJHDLS
+MONGO_URI=mongodb://localhost:27017/partycloud
+
 ## How it works
 
 brpop /box/1/queue
@@ -157,13 +163,12 @@ pinky/1/resources { # HASH
 }
 
 ## Example Jobs
-lpush jobs/1 "{\"name\":\"start\",\"serverId\":\"1234\",\"funpack\":\"minecraft-essentials\",\"ram\": { \"min\": 1024, \"max\": 1024  },\"world\":\"s3://minefold-development/worlds/501c6845c3b5a06485000002/world-data.incremental.tar.lzo\", \"settings\" : { \"banned\": [\"atnan\"], \"game_mode\": 1, \"new_player_can_build\" : false,\"ops\": [\"chrislloyd\"],\"seed\": 123456789,\"spawn_animals\": true,    \"spawn_monsters\": true,\"whitelisted\": [\"whatupdave\"]  }}"
+lpush jobs/1 "{\"name\":\"start\",\"serverId\":\"1234\",\"funpack\":\"minecraft-essentials\",\"ram\": { \"min\": 1024, \"max\": 1024  },\"world\":\"s3://minefold-development/worlds/1234/1234.1350676908.tar.lzo\", \"settings\" : { \"banned\": [\"atnan\"], \"game_mode\": 1, \"new_player_can_build\" : false,\"ops\": [\"chrislloyd\"],\"seed\": 123456789,\"spawn_animals\": true,    \"spawn_monsters\": true,\"whitelisted\": [\"whatupdave\"]  }}"
 lpush jobs/1 "{\"name\":\"stop\",\"serverId\":\"1234\"}"
 
 ## TODO
 
-download world
-backup world
+backup world to s3
 download funpack from s3
 log application crashes with bugsnag
 port allocation

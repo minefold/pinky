@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -76,7 +77,7 @@ func (s *Server) processStdout(c chan ServerEvent) {
 
 func (s *Server) Monitor() chan ServerEvent {
 	// TODO Wait for file to exist
-	time.Sleep(30 * time.Second)
+	time.Sleep(15 * time.Second)
 
 	// we have two channels, where we copy incoming events to outgoing events
 	// but on the stop event we intercept so we can make sure the server
@@ -130,7 +131,8 @@ func (s *Server) parseEvent(line []byte) (event ServerEvent, err error) {
 }
 
 func (s *Server) Stop() {
-	stdin, err := os.OpenFile(s.stdinPath(), syscall.O_WRONLY|syscall.O_APPEND, 0x0)
+	stdin, err := os.OpenFile(
+		s.stdinPath(), syscall.O_WRONLY|syscall.O_APPEND, 0x0)
 
 	if err != nil {
 		panic(err)
@@ -163,22 +165,18 @@ func execWithOutput(cmd *exec.Cmd) {
 	}
 }
 
-func (s *Server) WriteSettingsFile(
-	serverPath string,
-	pidFile string,
-	port int,
-	serverId string,
+func (s *Server) WriteSettingsFile(port int,
 	funpack string,
 	ram RamAllocation,
 	settings interface{}) {
 
-	serverFile := filepath.Join(serverPath, "server.json")
+	serverFile := filepath.Join(s.Path, "server.json")
 	// settingsJson, err := settings.MarshalJSON()
 	// if err != nil {
 	// 	panic(err)
 	// }
 	server := ServerSettings{
-		Id:       serverId,
+		Id:       s.Id,
 		Funpack:  funpack,
 		Port:     port,
 		Ram:      ram,
@@ -192,24 +190,21 @@ func (s *Server) WriteSettingsFile(
 	ioutil.WriteFile(serverFile, serverJson, 0644)
 }
 
-func (s *Server) StartServerProcess(
-	serverPath string,
-	pidFile string,
-	serverId string) (pid int) {
+func (s *Server) StartServerProcess(pidFile string) (pid int) {
 
-	serverFile := filepath.Join(serverPath, "server.json")
-	command := filepath.Join(serverPath, "funpack", "bin", "run")
+	serverFile := filepath.Join(s.Path, "server.json")
+	command := filepath.Join(s.Path, "funpack", "bin", "run")
 
 	// TODO some check to know if a funpack should run out of
 	// a working directory like Minecraft does or out of the
 	// funpack/server directory like TF2 does
 	// maybe a check for the existence of a backup script
-	workingDirectory := filepath.Join(serverPath, "working")
+	workingDirectory := filepath.Join(s.Path, "working")
 
 	bufferCmd, _ := filepath.Abs("bin/buffer-process")
 
-	fmt.Println("starting", workingDirectory, bufferCmd, "-d", serverPath, "-p", pidFile, command, serverFile)
-	cmd := exec.Command(bufferCmd, "-d", serverPath, "-p", pidFile, command, serverFile)
+	fmt.Println("starting", workingDirectory, bufferCmd, "-d", s.Path, "-p", pidFile, command, serverFile)
+	cmd := exec.Command(bufferCmd, "-d", s.Path, "-p", pidFile, command, serverFile)
 	cmd.Dir = workingDirectory
 
 	go execWithOutput(cmd)
@@ -222,21 +217,19 @@ func (s *Server) StartServerProcess(
 	return s.Pid
 }
 
-func (s *Server) PrepareServerPath(serverPath string) {
+func (s *Server) PrepareServerPath() {
 	// TODO some check to know if a funpack should run out of
 	// a working directory like Minecraft does or out of the
 	// funpack/server directory like TF2 does
 	// maybe a check for the existence of a backup script
 
-	workingDirectory := filepath.Join(serverPath, "working")
+	workingDirectory := filepath.Join(s.Path, "working")
 	exec.Command("rm", "-rf", workingDirectory).Run()
 	exec.Command("mkdir", "-p", workingDirectory).Run()
 }
 
-func (s *Server) DownloadFunpack(id string, serverPath string) {
-	funpackPath := filepath.Join(serverPath, "funpack")
-
-	fmt.Println("downloading funpack", id, funpackPath)
+func (s *Server) DownloadFunpack(funpack string) {
+	funpackPath := filepath.Join(s.Path, "funpack")
 
 	// TODO this should be downloading/untarring from s3
 	cmd := exec.Command(
@@ -245,20 +238,52 @@ func (s *Server) DownloadFunpack(id string, serverPath string) {
 		"/home/vagrant/funpacks/minecraft-essentials/",
 		funpackPath)
 	execWithOutput(cmd)
-
-	fmt.Println("downloaded funpack", id, serverPath)
 }
 
-func (s *Server) DownloadWorld(world string, serverPath string) {
+func (s *Server) DownloadWorld(world string) {
 	restoreDirBin, _ := filepath.Abs("bin/restore-dir")
 
 	cmd := exec.Command(restoreDirBin, world)
-	cmd.Dir = filepath.Join(serverPath, "working")
+	cmd.Dir = filepath.Join(s.Path, "working")
 
 	execWithOutput(cmd)
 }
 
-func (s *Server) BackupWorld(id string, dest string) {
-	fmt.Println("backing up world", id, dest)
-	fmt.Println("backed up world", id, dest)
+func (s *Server) BackupWorld() {
+	// TODO environment stuff
+	environment := "development"
+	bucket := "minefold-" + environment
+
+	timestamp := time.Now().Unix()
+
+	key := fmt.Sprintf("worlds/%s/%s.%d.tar.lzo", s.Id, s.Id, timestamp)
+
+	uri := fmt.Sprintf("s3://%s/%s", bucket, key)
+
+	archiveDirBin, _ := filepath.Abs("bin/archive-dir")
+	cmd := exec.Command(archiveDirBin, uri, s.backupPaths())
+	cmd.Dir = s.workingPath()
+
+	execWithOutput(cmd)
+
+	// TODO retries
+
+	// TODO store bacup result in mongo or something
+}
+
+func (s *Server) backupPaths() string {
+	cmd := filepath.Join(s.funpackPath(), "bin", "backup-paths")
+	paths, err := exec.Command(cmd, s.workingPath()).Output()
+	if err != nil {
+		panic(err)
+	}
+	return strings.TrimSpace(string(paths))
+}
+
+func (s *Server) funpackPath() string {
+	return filepath.Join(s.Path, "funpack")
+}
+
+func (s *Server) workingPath() string {
+	return filepath.Join(s.Path, "working")
 }
