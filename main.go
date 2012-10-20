@@ -146,7 +146,18 @@ func processServerEvents(serverId string, events chan ServerEvent) {
 	// TODO check if we need to do a backup
 	// eg. the world didn't start properly or
 	// this game has no persistent state
-	server.BackupWorld()
+	backupTime := time.Now()
+	key, err := server.BackupWorld(backupTime)
+	if err != nil {
+		// TODO retries, recovery etc
+		panic(err)
+	}
+
+	err = storeBackupInMongo(serverId, key, backupTime)
+	if err != nil {
+		// TODO retries, recovery etc
+		panic(err)
+	}
 
 	transitionToStopped(serverId)
 	removeServerArtifacts(serverId)

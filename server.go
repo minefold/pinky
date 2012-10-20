@@ -249,14 +249,14 @@ func (s *Server) DownloadWorld(world string) {
 	execWithOutput(cmd)
 }
 
-func (s *Server) BackupWorld() {
+func (s *Server) BackupWorld(backupTime time.Time) (key string, err error) {
 	// TODO environment stuff
 	environment := "development"
 	bucket := "minefold-" + environment
 
-	timestamp := time.Now().Unix()
+	timestamp := backupTime.Unix()
 
-	key := fmt.Sprintf("worlds/%s/%s.%d.tar.lzo", s.Id, s.Id, timestamp)
+	key = fmt.Sprintf("worlds/%s/%s.%d.tar.lzo", s.Id, s.Id, timestamp)
 
 	uri := fmt.Sprintf("s3://%s/%s", bucket, key)
 
@@ -266,9 +266,7 @@ func (s *Server) BackupWorld() {
 
 	execWithOutput(cmd)
 
-	// TODO retries
-
-	// TODO store bacup result in mongo or something
+	return key, nil
 }
 
 func (s *Server) backupPaths() string {
