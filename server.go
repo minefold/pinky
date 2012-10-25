@@ -140,29 +140,27 @@ func (s *Server) Stop() {
 	defer stdin.Close()
 
 	stdin.WriteString("stop\n")
-	go s.ensureServerStopped()
+	s.ensureServerStopped()
 }
 
-func execWithOutput(cmd *exec.Cmd) {
+func execWithOutput(cmd *exec.Cmd) (err error) {
 	fmt.Println(cmd)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		fmt.Println(err)
+		return
 	}
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		fmt.Println(err)
+		return
 	}
 	err = cmd.Start()
 	if err != nil {
-		fmt.Println(err)
+		return
 	}
 	go io.Copy(os.Stdout, stdout)
 	go io.Copy(os.Stderr, stderr)
 	err = cmd.Wait()
-	if err != nil {
-		panic(err)
-	}
+	return
 }
 
 func (s *Server) WriteSettingsFile(port int,
@@ -237,7 +235,10 @@ func (s *Server) DownloadFunpack(funpack string) {
 		"-a",
 		"/home/vagrant/funpacks/minecraft-essentials/",
 		funpackPath)
-	execWithOutput(cmd)
+	err := execWithOutput(cmd)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func (s *Server) DownloadWorld(world string) {
@@ -246,7 +247,10 @@ func (s *Server) DownloadWorld(world string) {
 	cmd := exec.Command(restoreDirBin, world)
 	cmd.Dir = filepath.Join(s.Path, "working")
 
-	execWithOutput(cmd)
+	err := execWithOutput(cmd)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func (s *Server) BackupWorld(backupTime time.Time) (key string, err error) {
@@ -264,9 +268,9 @@ func (s *Server) BackupWorld(backupTime time.Time) (key string, err error) {
 	cmd := exec.Command(archiveDirBin, uri, s.backupPaths())
 	cmd.Dir = s.workingPath()
 
-	execWithOutput(cmd)
+	err = execWithOutput(cmd)
 
-	return key, nil
+	return
 }
 
 func (s *Server) backupPaths() string {

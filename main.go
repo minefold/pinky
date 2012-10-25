@@ -48,8 +48,8 @@ type RedisServerInfo struct {
 var redisClient redis.Client
 var boxId string
 var servers = map[string]*Server{}
-var workInProgress = map[string]string{}
 var serverRoot string
+var wipGen *WipGenerator
 
 func popRedisQueue(c chan Job, queue string) {
 	client := createRedisClient()
@@ -58,7 +58,7 @@ func popRedisQueue(c chan Job, queue string) {
 		if e != nil {
 			// TODO figure out if this is a real error
 			// most commonly it's the pop timing out
-			fmt.Println("redis error", e)
+			// fmt.Println("redis error", e)
 		}
 
 		// If the pop times out, it just returns the key, no value
@@ -71,7 +71,7 @@ func popRedisQueue(c chan Job, queue string) {
 
 			c <- job
 		} else {
-			fmt.Println("redis pop timed out?")
+			// fmt.Println("redis pop timed out?")
 		}
 	}
 }
@@ -128,14 +128,23 @@ func startServer(job Job) {
 }
 
 func processServerEvents(serverId string, events chan ServerEvent) {
+	var stopWip chan bool
 	for event := range events {
 		fmt.Println(event)
 		switch event.Event {
 		case "started":
 			transitionStartingToUp(serverId)
 		case "stopping":
-			attemptStoppingTransition(serverId)
+			if attemptStoppingTransition(serverId) {
+				stopWip = <-wipGen.C
+				fmt.Println("----- Starting Work 1")
+			}
 		}
+	}
+
+	if stopWip == nil {
+		fmt.Println("----- Starting Work 2")
+		stopWip = <-wipGen.C
 	}
 
 	server := servers[serverId]
@@ -163,15 +172,21 @@ func processServerEvents(serverId string, events chan ServerEvent) {
 	removeServerArtifacts(serverId)
 	fmt.Println("server stopped")
 	delete(servers, serverId)
+	fmt.Println("----- Stopping Work 3")
+	stopWip <- true
 }
 
 func stopServer(job Job) {
 	if attemptStoppingTransition(job.ServerId) {
+		fmt.Println("----- Starting Work 4")
+		stopWip := <-wipGen.C
+
 		server := servers[job.ServerId]
 		if server == nil {
 			panic(fmt.Sprintf("no server for %s", job.ServerId))
 		}
 		server.Stop()
+		stopWip <- true
 	} else {
 		fmt.Println("Ignoring stop request")
 	}
@@ -224,6 +239,9 @@ func redisGet(key string) []byte {
 	err := retry(5, 100*time.Millisecond, func() error {
 		var err error
 		result, err = redisClient.Get(key)
+		if err != nil {
+			fmt.Println(err)
+		}
 		return err
 	})
 	handleRedisError(err)
@@ -302,22 +320,10 @@ func setStateTo(state string) {
 	redisClient.Set(key, []byte(state))
 }
 
-func uuid() string {
-	id, _ := exec.Command("uuidgen").Output()
-	return strings.TrimSpace(string(id))
-}
-
-func doWork(empty chan bool, work func()) {
-	id := uuid()
-	workInProgress[id] = id
-	work()
-	delete(workInProgress, id)
-	empty <- len(workInProgress) == 0
-}
-
-func processJobs(empty chan bool, jobChannel chan Job) {
+func processJobs(jobChannel chan Job) {
 	for {
 		job := <-jobChannel
+
 		if string(getState()) == "down" {
 			fmt.Println("ignoring job: pinky is down")
 			continue
@@ -326,14 +332,15 @@ func processJobs(empty chan bool, jobChannel chan Job) {
 		switch job.Name {
 
 		case "start":
-			go doWork(empty, func() {
+			go func() {
+				wip := <-wipGen.C
 				startServer(job)
-			})
+				wip <- true
+			}()
 
 		case "stop":
-			go doWork(empty, func() {
-				stopServer(job)
-			})
+			go stopServer(job)
+
 		default:
 			fmt.Println("Unknown job", job)
 		}
@@ -389,47 +396,6 @@ func discoverRunningServers() {
 	}
 }
 
-type hbJson struct {
-	Disk  map[string]DiskUsage `json:"disk"`
-	Procs map[string]ProcUsage `json:"procs"`
-}
-
-func heartbeatJson() []byte {
-	procUsages, _ := CollectProcUsage()
-	diskUsages, _ := CollectDiskUsage()
-
-	v := hbJson{
-		Disk:  make(map[string]DiskUsage),
-		Procs: make(map[string]ProcUsage),
-	}
-
-	for _, diskUsage := range diskUsages {
-		v.Disk[diskUsage.Name] = diskUsage
-	}
-	for _, procUsage := range procUsages {
-		v.Procs[fmt.Sprintf("%d", procUsage.Pid)] = procUsage
-	}
-
-	json, err := json.Marshal(v)
-	if err != nil {
-		panic(err)
-	}
-
-	return json
-}
-
-func quitWhenEmpty(empty chan bool) {
-	for finished := range empty {
-		if finished {
-			os.Exit(0)
-		} else {
-			fmt.Println(
-				fmt.Sprintf("Quitting. %d jobs remaining",
-					len(workInProgress)))
-		}
-	}
-}
-
 func main() {
 	defer func() {
 		if r := recover(); r != nil {
@@ -438,6 +404,8 @@ func main() {
 			panic(r)
 		}
 	}()
+
+	wipGen = NewWipGenerator()
 
 	boxId = os.Args[1]
 
@@ -455,33 +423,7 @@ func main() {
 	go popRedisQueue(jobChannel, boxQueueKey)
 
 	// start heartbeat
-	ticker := time.NewTicker(time.Second * 10)
-	go func() {
-		for _ = range ticker.C {
-			json := heartbeatJson()
-			key := fmt.Sprintf("pinky/%s/resources", boxId)
-
-			redisClient.Setex(key, 20, json)
-		}
-	}()
-
-	// trap signals
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGQUIT)
-
-	empty := make(chan bool, 100)
-
-	go func() {
-		for {
-			<-sig
-			fmt.Println("stopping pinky")
-			setStateTo("down")
-			if len(workInProgress) == 0 {
-				os.Exit(0)
-			}
-			quitWhenEmpty(empty)
-		}
-	}()
+	go heartbeat()
 
 	setStateTo("up")
 	fmt.Println(
@@ -489,5 +431,29 @@ func main() {
 			os.Getpid(),
 			boxQueueKey,
 			serverRoot))
-	processJobs(empty, jobChannel)
+	go processJobs(jobChannel)
+
+	// trap signals
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGQUIT)
+
+	// wait for signal
+	<-sig
+	fmt.Println("stopping pinky")
+	setStateTo("down")
+
+	// wait for no work in progress
+	// TODO something better than polling wip count?
+	empty := time.NewTicker(time.Second * 1)
+	jobCount := -1
+	for _ = range empty.C {
+		if jobCount != wipGen.Count {
+			fmt.Println(wipGen.Count, "jobs remaining")
+		}
+		jobCount = wipGen.Count
+
+		if wipGen.Count == 0 {
+			os.Exit(0)
+		}
+	}
 }

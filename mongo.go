@@ -33,7 +33,7 @@ func storeBackupInMongo(serverId string,
 	}
 	defer session.Close()
 
-	err = db.C("worlds").UpdateId(bson.ObjectIdHex(serverId), bson.M{
+	_, err = db.C("worlds").UpsertId(bson.ObjectIdHex(serverId), bson.M{
 		"$set": bson.M{
 			"backed_up_at":    backupTime,
 			"world_data_file": key,
