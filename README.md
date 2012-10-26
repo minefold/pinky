@@ -165,7 +165,6 @@ lpush jobs/1 "{\"name\":\"stop\",\"serverId\":\"508227b5474a80599bcab3aa\"}"
 
 ## TODO
 
-periodic backup to s3
 download funpack from s3
 log application crashes with bugsnag
 port allocation

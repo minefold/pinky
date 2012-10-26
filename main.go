@@ -18,7 +18,7 @@ import (
 )
 
 // (start|stop|broadcast|tell|multi)
-type PinkyJob struct {
+type Job struct {
 	Name     string
 	ServerId string
 	Funpack  string
