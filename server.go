@@ -144,7 +144,7 @@ func (s *Server) Stop() {
 }
 
 func execWithOutput(cmd *exec.Cmd) (err error) {
-	fmt.Println(cmd)
+	// fmt.Println(cmd)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return

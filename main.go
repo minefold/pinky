@@ -17,7 +17,8 @@ import (
 	"time"
 )
 
-type Job struct {
+// (start|stop|broadcast|tell|multi)
+type PinkyJob struct {
 	Name     string
 	ServerId string
 	Funpack  string
@@ -127,8 +128,41 @@ func startServer(job Job) {
 	}
 }
 
+func runBackups(stop chan bool, serverId string) {
+	ticker := time.NewTicker(10 * time.Minute)
+
+	for {
+		select {
+		case <-ticker.C:
+			wip := <-wipGen.C
+			fmt.Println("starting periodic backup")
+			err := backupServer(serverId)
+			if err != nil {
+				// TODO figure out some recovery scenario
+				panic(err)
+			}
+			fmt.Println("finished periodic backup")
+			wip <- true
+
+		case <-stop:
+			ticker.Stop()
+			return
+
+		default:
+			// TODO check if this is actually needed
+			// I think this sleep might stop the cpu
+			// from getting hammered
+			time.Sleep(1 * time.Second)
+		}
+	}
+}
+
 func processServerEvents(serverId string, events chan ServerEvent) {
-	var stopWip chan bool
+	stopBackups := make(chan bool)
+
+	go runBackups(stopBackups, serverId)
+
+	var wip chan bool
 	for event := range events {
 		fmt.Println(event)
 		switch event.Event {
@@ -136,16 +170,34 @@ func processServerEvents(serverId string, events chan ServerEvent) {
 			transitionStartingToUp(serverId)
 		case "stopping":
 			if attemptStoppingTransition(serverId) {
-				stopWip = <-wipGen.C
-				fmt.Println("----- Starting Work 1")
+				wip = <-wipGen.C
 			}
 		}
 	}
 
-	if stopWip == nil {
-		fmt.Println("----- Starting Work 2")
-		stopWip = <-wipGen.C
+	if wip == nil {
+		wip = <-wipGen.C
 	}
+	defer close(wip)
+
+	stopBackups <- true
+
+	fmt.Println("starting shutdown backup")
+	err := backupServer(serverId)
+	if err != nil {
+		// TODO figure out some recovery scenario
+		panic(err)
+	}
+	fmt.Println("finished shutdown backup")
+	transitionToStopped(serverId)
+	removeServerArtifacts(serverId)
+	fmt.Println("server stopped")
+	delete(servers, serverId)
+}
+
+func backupServer(serverId string) error {
+	wip := <-wipGen.C
+	defer close(wip)
 
 	server := servers[serverId]
 	if server == nil {
@@ -156,37 +208,40 @@ func processServerEvents(serverId string, events chan ServerEvent) {
 	// eg. the world didn't start properly or
 	// this game has no persistent state
 	backupTime := time.Now()
-	key, err := server.BackupWorld(backupTime)
+	var key string
+	err := retry(10, 5*time.Second, func() error {
+		var err error
+		key, err = server.BackupWorld(backupTime)
+		if err != nil {
+			fmt.Println("Backup Error:", err)
+		}
+		return err
+	})
 	if err != nil {
-		// TODO retries, recovery etc
-		panic(err)
+		return err
 	}
 
-	err = storeBackupInMongo(serverId, key, backupTime)
-	if err != nil {
-		// TODO retries, recovery etc
-		panic(err)
-	}
+	err = retry(10, 5*time.Second, func() error {
+		err := storeBackupInMongo(serverId, key, backupTime)
+		if err != nil {
+			fmt.Println("Mongo Storage Error:", err)
+		}
+		return err
+	})
 
-	transitionToStopped(serverId)
-	removeServerArtifacts(serverId)
-	fmt.Println("server stopped")
-	delete(servers, serverId)
-	fmt.Println("----- Stopping Work 3")
-	stopWip <- true
+	return err
 }
 
 func stopServer(job Job) {
 	if attemptStoppingTransition(job.ServerId) {
-		fmt.Println("----- Starting Work 4")
-		stopWip := <-wipGen.C
+		wip := <-wipGen.C
+		defer close(wip)
 
 		server := servers[job.ServerId]
 		if server == nil {
 			panic(fmt.Sprintf("no server for %s", job.ServerId))
 		}
 		server.Stop()
-		stopWip <- true
 	} else {
 		fmt.Println("Ignoring stop request")
 	}
@@ -335,7 +390,7 @@ func processJobs(jobChannel chan Job) {
 			go func() {
 				wip := <-wipGen.C
 				startServer(job)
-				wip <- true
+				close(wip)
 			}()
 
 		case "stop":
@@ -396,6 +451,20 @@ func discoverRunningServers() {
 	}
 }
 
+func cleanOldServers() {
+	keys, err := redisClient.Keys(fmt.Sprintf("pinky/%s/servers/*", boxId))
+	if err != nil {
+		panic(err)
+	}
+	for _, key := range keys {
+		serverId := strings.Split(key, "/")[3]
+		if _, ok := servers[serverId]; !ok {
+			fmt.Println("removing old dead server", serverId)
+			redisDel(key)
+		}
+	}
+}
+
 func main() {
 	defer func() {
 		if r := recover(); r != nil {
@@ -417,6 +486,7 @@ func main() {
 	exec.Command("mkdir", "-p", serverRoot).Run()
 
 	discoverRunningServers()
+	cleanOldServers()
 
 	jobChannel := make(chan Job)
 	boxQueueKey := fmt.Sprintf("jobs/%s", boxId)

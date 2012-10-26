@@ -15,7 +15,7 @@ MONGO_URI=mongodb://localhost:27017/partycloud
 ## How it works
 
 brpop /box/1/queue
-  - type (start|stop|broadcast|tell|multi)
+  - type (start|stop|broadcast|tell)
 
 ### Ignored commands
 * While stopping or starting ignore commands
@@ -59,9 +59,6 @@ Example:
   - server_id
   - user_id
   - message
-
-### MULTI
-  - (array of jobs)
   
 ## Paths
 
@@ -176,3 +173,5 @@ support BROADCAST job
 support TELL job
 push job accept status (accepted|ignored)
 push job complete status (succeeded|failed)
+
+¯\_(ツ)_/¯

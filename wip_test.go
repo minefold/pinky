@@ -2,6 +2,7 @@ package main
 
 import (
 	"testing"
+	"time"
 )
 
 func TestWorkInProgress(t *testing.T) {
@@ -14,8 +15,10 @@ func TestWorkInProgress(t *testing.T) {
 		t.Error("count != 2")
 	}
 
-	work1 <- true // finish job 1
-	work2 <- true // finish job 2
+	close(work1) // finish job 1
+	close(work2) // finish job 2
+
+	time.Sleep(500 * time.Millisecond)
 
 	if wipGen.Count != 0 {
 		t.Error("count != 0")
