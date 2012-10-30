@@ -18,6 +18,7 @@ type Server struct {
 	Id   string
 	Path string
 	Pid  int
+	Port int
 	Proc *ManagedProcess
 }
 
@@ -35,8 +36,8 @@ type ServerSettings struct {
 	Settings interface{}   `json:"settings"`
 }
 
-func AttachServer(id string, path string, pid int) *Server {
-	s := &Server{Id: id, Path: path, Pid: pid}
+func AttachServer(id string, path string, pid int, port int) *Server {
+	s := &Server{Id: id, Path: path, Pid: pid, Port: port}
 	s.Proc = NewManagedProcess(pid)
 	return s
 }
@@ -75,9 +76,18 @@ func (s *Server) processStdout(c chan ServerEvent) {
 	close(c)
 }
 
+func waitForExist(path string) {
+	t := time.NewTicker(100 * time.Millisecond)
+	for _ = range t.C {
+		_, err := os.Open(path)
+		if err == nil {
+			return
+		}
+	}
+}
+
 func (s *Server) Monitor() chan ServerEvent {
-	// TODO Wait for file to exist
-	time.Sleep(15 * time.Second)
+	waitForExist(s.stdoutPath())
 
 	// we have two channels, where we copy incoming events to outgoing events
 	// but on the stop event we intercept so we can make sure the server
@@ -163,8 +173,7 @@ func execWithOutput(cmd *exec.Cmd) (err error) {
 	return
 }
 
-func (s *Server) WriteSettingsFile(port int,
-	funpack string,
+func (s *Server) WriteSettingsFile(funpack string,
 	ram RamAllocation,
 	settings interface{}) {
 
@@ -176,7 +185,7 @@ func (s *Server) WriteSettingsFile(port int,
 	server := ServerSettings{
 		Id:       s.Id,
 		Funpack:  funpack,
-		Port:     port,
+		Port:     s.Port,
 		Ram:      ram,
 		Settings: settings,
 	}

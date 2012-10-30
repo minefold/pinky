@@ -167,10 +167,10 @@ lpush jobs/1 "{\"name\":\"stop\",\"serverId\":\"508227b5474a80599bcab3aa\"}"
 
 download funpack from s3
 log application crashes with bugsnag
-port allocation
 support BROADCAST job
 support TELL job
 push job accept status (accepted|ignored)
 push job complete status (succeeded|failed)
+recover server not starting and hanging (just run on existing port to test)
 
 ¯\_(ツ)_/¯

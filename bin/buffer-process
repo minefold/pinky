@@ -67,7 +67,6 @@ class IOBufferIn < IOBuffer
 
   def cleanup
     @io_in.close if @io_in
-    system "rm -f #{@pipe_in_file}"
   end
 end
 
@@ -93,7 +92,6 @@ class IOBufferOut < IOBuffer
 
   def cleanup
     @io_out.close if @io_out
-    system "rm -f #{@pipe_out_file}"
   end
 end
 

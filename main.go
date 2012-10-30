@@ -51,6 +51,7 @@ var boxId string
 var servers = map[string]*Server{}
 var serverRoot string
 var wipGen *WipGenerator
+var portPool chan int
 
 func popRedisQueue(c chan Job, queue string) {
 	client := createRedisClient()
@@ -88,9 +89,13 @@ func pidFile(serverId string) string {
 func startServer(job Job) {
 	if attemptStartingTransition(job.ServerId) {
 
-		server := new(Server)
-		server.Id = job.ServerId
-		server.Path = filepath.Join(serverRoot, server.Id)
+		port := <-portPool
+
+		server := &Server{
+			Id:   job.ServerId,
+			Path: filepath.Join(serverRoot, job.ServerId),
+			Port: port,
+		}
 
 		servers[server.Id] = server
 
@@ -98,14 +103,12 @@ func startServer(job Job) {
 
 		pidFile := pidFile(job.ServerId)
 
-		// TODO reserve an unused port
-		port := 20000
-
 		server.PrepareServerPath()
-		server.DownloadWorld(job.World)
+		if job.World != "" {
+			server.DownloadWorld(job.World)
+		}
 		server.DownloadFunpack(job.Funpack)
 		server.WriteSettingsFile(
-			port,
 			job.Funpack,
 			job.Ram,
 			job.Settings)
@@ -191,8 +194,9 @@ func processServerEvents(serverId string, events chan ServerEvent) {
 	fmt.Println("finished shutdown backup")
 	transitionToStopped(serverId)
 	removeServerArtifacts(serverId)
-	fmt.Println("server stopped")
+	portPool <- servers[serverId].Port
 	delete(servers, serverId)
+	fmt.Println("server stopped")
 }
 
 func backupServer(serverId string) error {
@@ -276,6 +280,14 @@ func handleRedisError(err error) {
 
 func stateKey(serverId string) string {
 	return fmt.Sprintf("server/state/%s", serverId)
+}
+
+func pinkyServerKey(serverId string) string {
+	return fmt.Sprintf("pinky/%s/servers/%s", boxId, serverId)
+}
+
+func pinkyServersKey() string {
+	return fmt.Sprintf("pinky/%s/servers/*", boxId)
 }
 
 func retry(maxRetries int, delay time.Duration, work func() error) error {
@@ -436,10 +448,18 @@ func discoverRunningServers() {
 		if isAlive(pid) {
 			fmt.Println("found running server", serverId, "pid", pid)
 
+			key := pinkyServerKey(serverId)
+			var serverInfo RedisServerInfo
+			err = json.Unmarshal(redisGet(key), &serverInfo)
+			if err != nil {
+				panic(err)
+			}
+
 			servers[serverId] = AttachServer(
 				serverId,
 				serverPath,
-				pid)
+				pid,
+				serverInfo.Port)
 
 			events := servers[serverId].Monitor()
 			go processServerEvents(serverId, events)
@@ -452,7 +472,7 @@ func discoverRunningServers() {
 }
 
 func cleanOldServers() {
-	keys, err := redisClient.Keys(fmt.Sprintf("pinky/%s/servers/*", boxId))
+	keys, err := redisClient.Keys(pinkyServersKey())
 	if err != nil {
 		panic(err)
 	}
@@ -463,6 +483,14 @@ func cleanOldServers() {
 			redisDel(key)
 		}
 	}
+}
+
+func portsInUse() []int {
+	ports := make([]int, 100)
+	for _, server := range servers {
+		ports = append(ports, server.Port)
+	}
+	return ports
 }
 
 func main() {
@@ -487,6 +515,10 @@ func main() {
 
 	discoverRunningServers()
 	cleanOldServers()
+
+	// TODO reserve bound ports
+	// allocate 200 ports starting at 10000 with a 100 port gap
+	portPool = NewIntPool(10000, 200, 100, portsInUse())
 
 	jobChannel := make(chan Job)
 	boxQueueKey := fmt.Sprintf("jobs/%s", boxId)
@@ -513,7 +545,6 @@ func main() {
 	setStateTo("down")
 
 	// wait for no work in progress
-	// TODO something better than polling wip count?
 	empty := time.NewTicker(time.Second * 1)
 	jobCount := -1
 	for _ = range empty.C {
