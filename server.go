@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -15,11 +16,12 @@ import (
 )
 
 type Server struct {
-	Id   string
-	Path string
-	Pid  int
-	Port int
-	Proc *ManagedProcess
+	Id       string
+	Path     string
+	Pid      int
+	Port     int
+	HasWorld bool
+	Proc     *ManagedProcess
 }
 
 type ServerEvent struct {
@@ -73,14 +75,24 @@ func (s *Server) processStdout(c chan ServerEvent) {
 		line, isPrefix, err = r.ReadLine()
 	}
 
+	fmt.Println(s.Id, "STDOUT closed")
+
 	close(c)
+}
+
+func fileExists(path string) bool {
+	f, err := os.Open(path)
+	if err == nil {
+		f.Close()
+		return true
+	}
+	return false
 }
 
 func waitForExist(path string) {
 	t := time.NewTicker(100 * time.Millisecond)
 	for _ = range t.C {
-		_, err := os.Open(path)
-		if err == nil {
+		if fileExists(path) {
 			return
 		}
 	}
@@ -114,24 +126,23 @@ func (s *Server) Monitor() chan ServerEvent {
 }
 
 func (s *Server) ensureServerStopped() {
-	timeout := make(chan bool, 1)
-	go func() {
-		time.Sleep(30 * time.Second)
-		timeout <- true
-	}()
+	timeout := time.After(30 * time.Second)
+	for {
+		select {
+		case <-timeout:
+			fmt.Println(
+				"timeout waiting for process exit. killing process", s.Pid)
+			syscall.Kill(s.Pid, syscall.SIGTERM)
+			return
 
-	wait := make(chan bool, 1)
-	go func() {
-		s.Proc.Wait()
-		wait <- true
-	}()
+		default:
+			if !s.Proc.IsRunning() {
+				fmt.Println(s.Id, "process exited")
+				return
+			}
 
-	select {
-	case <-wait:
-		fmt.Println("process exited")
-	case <-timeout:
-		fmt.Println("timeout waiting for process exit. killing process", s.Pid)
-		syscall.Kill(s.Pid, syscall.SIGTERM)
+			time.Sleep(500)
+		}
 	}
 }
 
@@ -170,6 +181,10 @@ func execWithOutput(cmd *exec.Cmd) (err error) {
 	go io.Copy(os.Stdout, stdout)
 	go io.Copy(os.Stderr, stderr)
 	err = cmd.Wait()
+
+	stdout.Close()
+	stderr.Close()
+
 	return
 }
 
@@ -216,9 +231,14 @@ func (s *Server) StartServerProcess(pidFile string) (pid int) {
 
 	go execWithOutput(cmd)
 
-	// TODO wait for pid
-	time.Sleep(3 * time.Second)
-	_, s.Pid = readPidFromFile(pidFile)
+	err := retry(50, 100*time.Millisecond, func() error {
+		var err error
+		_, s.Pid, err = readPidFromFile(pidFile)
+		return err
+	})
+	if err != nil {
+		panic(err)
+	}
 
 	s.Proc = NewManagedProcess(cmd.Process.Pid)
 	return s.Pid
@@ -242,12 +262,15 @@ func (s *Server) DownloadFunpack(funpack string) {
 	cmd := exec.Command(
 		"rsync",
 		"-a",
-		"/home/vagrant/funpacks/minecraft-essentials/",
+		"/home/vagrant/funpacks/dummy.funpack/",
 		funpackPath)
 	err := execWithOutput(cmd)
 	if err != nil {
 		panic(err)
 	}
+
+	s.HasWorld = fileExists(
+		filepath.Join(s.funpackPath(), "bin", "backup-paths"))
 }
 
 func (s *Server) DownloadWorld(world string) {
@@ -263,6 +286,9 @@ func (s *Server) DownloadWorld(world string) {
 }
 
 func (s *Server) BackupWorld(backupTime time.Time) (key string, err error) {
+	if !s.HasWorld {
+		return "", errors.New("Nothing to back up")
+	}
 	// TODO environment stuff
 	environment := "development"
 	bucket := "minefold-" + environment

@@ -2,48 +2,38 @@ package main
 
 import (
 	"fmt"
-	"github.com/kristiankristensen/Go-Redis"
+	"github.com/simonz05/godis/redis"
 	"labix.org/v2/mgo/bson"
-	"strings"
 	"time"
 )
 
-var r redis.Client
+var r *redis.Client
 
-func createRedisClient() (client redis.Client) {
-	spec := redis.DefaultSpec()
-	client, err := redis.NewSynchClientWithSpec(spec)
-	if err != nil {
-		panic("failed to create the client")
-	}
-	return
-}
-
-func watchServers(serverCount chan int) {
-	prev := 0
+func watchServers(liveServersCount chan int, upServersCount chan int) {
+	prevLive := 0
+	prevUp := 0
 	for {
 		keys, _ := r.Keys("server/state/*")
 
+		liveServers := len(keys)
 		upServers := 0
 
 		for _, key := range keys {
-			serverId := strings.Split(key, "/")[2]
-
-			state, err := r.Get(key)
-			if err != nil {
-				panic(err)
-			}
-
-			fmt.Println(key, serverId, string(state))
+			state := redisGet(r, key)
 
 			if string(state) == "up" {
 				upServers++
 			}
 		}
 
-		if prev != upServers {
-			prev = upServers
-			serverCount <- upServers
+		if prevLive != liveServers {
+			prevLive = liveServers
+			liveServersCount <- liveServers
+		}
+
+		if prevUp != upServers {
+			prevUp = upServers
+			upServersCount <- upServers
 		}
 
 		time.Sleep(1 * time.Second)
@@ -56,28 +46,78 @@ func startServer(serverId string) {
 		"serverId":"%s",
 		"funpack":"minecraft-essentials",
 		"ram": { "min": 512, "max": 512  },
-		"settings": { 
-			"banned": ["atnan"], 
-			"game_mode": 1, 
-			"ops": ["chrislloyd"],
-			"seed": 123456789,
-			"spawn_animals": true,
-			"spawn_monsters": true,
-			"whitelisted": ["whatupdave"]  }}`, serverId)))
+		"settings": {}
+	}`, serverId)))
+}
+
+func stopServer(serverId string) {
+	r.Lpush("jobs/1", []byte(fmt.Sprintf(`{
+		"name":"stop",
+		"serverId":"%s"}`, serverId)))
+}
+
+func countServersTo(serverCount chan int, target int) {
+	for count := range serverCount {
+		fmt.Println(count, "servers")
+		if count == target {
+			return
+		}
+	}
 }
 
 func main() {
-	r = createRedisClient()
+	maxServers := 100
+	r = redis.New("", 0, "")
 
-	serverCount := make(chan int)
-	go watchServers(serverCount)
+	upServerCount := make(chan int, maxServers*10)
+	liveServerCount := make(chan int, maxServers*10)
+	go watchServers(liveServerCount, upServerCount)
 
-	startServer(bson.NewObjectId().Hex())
+	serverIds := make([]string, maxServers)
 
-	for count := range serverCount {
-		fmt.Println(count, "servers")
+	for i := 0; i < maxServers; i++ {
+		serverIds[i] = bson.NewObjectId().Hex()
 	}
 
-	// lpush jobs/1 "{\"name\":\"stop\",\"serverId\":\"508227b5474a80599bcab3aa\"}"
+	for i := 0; i < maxServers; i++ {
+		fmt.Println(serverIds[i])
+		startServer(serverIds[i])
+		time.Sleep(200 * time.Millisecond)
+	}
 
+	countServersTo(upServerCount, maxServers)
+	fmt.Println("up")
+
+	for i := 0; i < maxServers; i++ {
+		stopServer(serverIds[i])
+	}
+
+	countServersTo(liveServerCount, 0)
+}
+
+func retry(maxRetries int, delay time.Duration, work func() error) error {
+	err := work()
+	retries := 0
+	for err != nil && retries < maxRetries {
+		time.Sleep(delay)
+		err = work()
+		retries += 1
+	}
+	return err
+}
+
+func redisGet(redisClient *redis.Client, key string) []byte {
+	var result []byte
+	err := retry(50, 100*time.Millisecond, func() error {
+		var err error
+		result, err = redisClient.Get(key)
+		if err != nil {
+			fmt.Println("redis retry...")
+		}
+		return err
+	})
+	if err != nil {
+		panic(err)
+	}
+	return result
 }

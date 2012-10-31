@@ -4,13 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	// "log"
-	"github.com/kristiankristensen/Go-Redis"
+	"github.com/simonz05/godis/redis"
 	"io/ioutil"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
-	// "runtime/debug"
 	"strconv"
 	"strings"
 	"syscall"
@@ -37,16 +36,7 @@ type RedisServerInfo struct {
 	Port int `json:"port"`
 }
 
-/*
-	Global Redis storage
-	(string) server/state/{serverId}  [starting|up|stopping]
-
-	Local Redis storage
-	TODO support TCP/UDP port ranges
-	(set)  ports/{boxId}     [4001|4002]
-*/
-
-var redisClient redis.Client
+var redisClient *redis.Client
 var boxId string
 var servers = map[string]*Server{}
 var serverRoot string
@@ -54,26 +44,20 @@ var wipGen *WipGenerator
 var portPool chan int
 
 func popRedisQueue(c chan Job, queue string) {
-	client := createRedisClient()
+	client := redis.New("", 0, "")
 	for {
-		bytes, e := client.Brpop(queue, 60)
+		reply, e := client.Brpop([]string{queue}, 60)
 		if e != nil {
-			// TODO figure out if this is a real error
+			// TODO check if this is a real error
 			// most commonly it's the pop timing out
 			// fmt.Println("redis error", e)
-		}
+		} else {
+			val := reply.BytesArray()[1]
 
-		// If the pop times out, it just returns the key, no value
-		if len(bytes) > 1 {
-			// fmt.Sprintf("%s", bytes[1])
 			var job Job
-			json.Unmarshal(bytes[1], &job)
-
-			fmt.Println(string(bytes[1]), job)
+			json.Unmarshal(val, &job)
 
 			c <- job
-		} else {
-			// fmt.Println("redis pop timed out?")
 		}
 	}
 }
@@ -127,7 +111,7 @@ func startServer(job Job) {
 			serverJson)
 
 	} else {
-		fmt.Println("Ignoring start request")
+		fmt.Println("Ignoring start request", job.ServerId)
 	}
 }
 
@@ -163,7 +147,10 @@ func runBackups(stop chan bool, serverId string) {
 func processServerEvents(serverId string, events chan ServerEvent) {
 	stopBackups := make(chan bool)
 
-	go runBackups(stopBackups, serverId)
+	hasWorld := servers[serverId].HasWorld
+	if hasWorld {
+		go runBackups(stopBackups, serverId)
+	}
 
 	var wip chan bool
 	for event := range events {
@@ -183,20 +170,23 @@ func processServerEvents(serverId string, events chan ServerEvent) {
 	}
 	defer close(wip)
 
-	stopBackups <- true
+	if hasWorld {
+		stopBackups <- true
 
-	fmt.Println("starting shutdown backup")
-	err := backupServer(serverId)
-	if err != nil {
-		// TODO figure out some recovery scenario
-		panic(err)
+		fmt.Println("starting shutdown backup")
+		err := backupServer(serverId)
+		if err != nil {
+			// TODO figure out some recovery scenario
+			panic(err)
+		}
+		fmt.Println("finished shutdown backup")
 	}
-	fmt.Println("finished shutdown backup")
+
 	transitionToStopped(serverId)
 	removeServerArtifacts(serverId)
 	portPool <- servers[serverId].Port
 	delete(servers, serverId)
-	fmt.Println("server stopped")
+	fmt.Println(serverId, "stopped")
 }
 
 func backupServer(serverId string) error {
@@ -247,7 +237,7 @@ func stopServer(job Job) {
 		}
 		server.Stop()
 	} else {
-		fmt.Println("Ignoring stop request")
+		fmt.Println("Ignoring stop request", job.ServerId)
 	}
 }
 
@@ -259,16 +249,6 @@ func removeServerArtifacts(serverId string) {
 		fmt.Sprintf("pinky/%s/servers/%s", boxId, serverId))
 	redisClient.Del(
 		fmt.Sprintf("server/state/%s", serverId))
-}
-
-func createRedisClient() (client redis.Client) {
-	// TODO add real connection info
-	spec := redis.DefaultSpec()
-	client, err := redis.NewSynchClientWithSpec(spec)
-	if err != nil {
-		panic("failed to create the client")
-	}
-	return
 }
 
 func handleRedisError(err error) {
@@ -303,11 +283,11 @@ func retry(maxRetries int, delay time.Duration, work func() error) error {
 
 func redisGet(key string) []byte {
 	var result []byte
-	err := retry(5, 100*time.Millisecond, func() error {
+	err := retry(50, 100*time.Millisecond, func() error {
 		var err error
 		result, err = redisClient.Get(key)
 		if err != nil {
-			fmt.Println(err)
+			fmt.Println("redis retry...")
 		}
 		return err
 	})
@@ -315,15 +295,31 @@ func redisGet(key string) []byte {
 	return result
 }
 
-func redisDel(key string) bool {
-	var result bool
-	err := retry(5, 100*time.Millisecond, func() error {
+func redisDel(key string) int64 {
+	var result int64
+	err := retry(50, 100*time.Millisecond, func() error {
 		var err error
 		result, err = redisClient.Del(key)
+		if err != nil {
+			fmt.Println("redis retry...")
+		}
 		return err
 	})
 	handleRedisError(err)
 	return result
+}
+
+func redisSet(key string, value []byte) {
+	err := retry(50, 100*time.Millisecond, func() error {
+		var err error
+		err = redisClient.Set(key, value)
+		if err != nil {
+			fmt.Println("redis retry...")
+		}
+		return err
+	})
+	handleRedisError(err)
+	return
 }
 
 func stateTransition(
@@ -334,24 +330,24 @@ func stateTransition(
 
 	// TODO race condition?
 	serverStateKey := stateKey(serverId)
-	oldValue := redisGet(serverStateKey)
+	oldValue := string(redisGet(serverStateKey))
 
-	if string(oldValue) != from {
+	if oldValue != from {
+		msg := fmt.Sprintf(
+			"invalid state! Expected %s was %s (%s)",
+			from, oldValue, serverStateKey)
 		if enforceStartingCondition {
-			panic(
-				fmt.Sprintf(
-					"invalid state! Expected %s was %s", from, oldValue))
+			panic(msg)
 		} else {
+			// fmt.Println(msg)
 			return false
 		}
 	}
 
 	if to != "" {
-		err := redisClient.Set(serverStateKey, []byte(to))
-		handleRedisError(err)
+		redisSet(serverStateKey, []byte(to))
 	} else {
-		_, err := redisClient.Del(serverStateKey)
-		handleRedisError(err)
+		redisDel(serverStateKey)
 	}
 
 	return true
@@ -419,19 +415,20 @@ func isAlive(pid int) bool {
 }
 
 // returns serverId, pid
-func readPidFromFile(pidFile string) (string, int) {
+func readPidFromFile(pidFile string) (serverId string, pid int, err error) {
 	b, err := ioutil.ReadFile(pidFile)
 	if err != nil {
-		panic(err)
+		return
 	}
-	pid, err := strconv.Atoi(string(b))
+	pid, err = strconv.Atoi(string(b))
 	if err != nil {
-		panic(err)
+		return
 	}
 
 	parts := strings.Split(filepath.Base(pidFile), ".")
+	serverId = parts[0]
 
-	return parts[0], pid
+	return
 }
 
 func discoverRunningServers() {
@@ -440,7 +437,10 @@ func discoverRunningServers() {
 		panic(err)
 	}
 	for _, pidFile := range matches {
-		serverId, pid := readPidFromFile(pidFile)
+		serverId, pid, err := readPidFromFile(pidFile)
+		if err != nil {
+			panic(err)
+		}
 		serverPath := serverPath(serverId)
 		fmt.Println(
 			fmt.Sprintf("found pid_file=%s path=%s", pidFile, serverPath))
@@ -450,8 +450,10 @@ func discoverRunningServers() {
 
 			key := pinkyServerKey(serverId)
 			var serverInfo RedisServerInfo
-			err = json.Unmarshal(redisGet(key), &serverInfo)
+			jsonVal := redisGet(key)
+			err = json.Unmarshal(jsonVal, &serverInfo)
 			if err != nil {
+				fmt.Println(key, jsonVal)
 				panic(err)
 			}
 
@@ -480,7 +482,7 @@ func cleanOldServers() {
 		serverId := strings.Split(key, "/")[3]
 		if _, ok := servers[serverId]; !ok {
 			fmt.Println("removing old dead server", serverId)
-			redisDel(key)
+			removeServerArtifacts(serverId)
 		}
 	}
 }
@@ -493,14 +495,27 @@ func portsInUse() []int {
 	return ports
 }
 
-func main() {
-	defer func() {
-		if r := recover(); r != nil {
-			// TODO bugsnag
-			fmt.Println("ERMAHGERD FERTEL ERRERRRR! ಠ_ಠ")
-			panic(r)
+func waitForNoWorkInProgress() {
+	empty := time.NewTicker(time.Second * 1)
+	jobCount := -1
+	for _ = range empty.C {
+		if jobCount != wipGen.Count {
+			fmt.Println(wipGen.Count, "jobs remaining")
 		}
-	}()
+		jobCount = wipGen.Count
+
+		if wipGen.Count == 0 {
+			return
+		}
+	}
+}
+
+func main() {
+	if r := recover(); r != nil {
+		// TODO bugsnag
+		fmt.Println("ERMAHGERD FERTEL ERRERRRR! ಠ_ಠ")
+		panic(r)
+	}
 
 	wipGen = NewWipGenerator()
 
@@ -509,14 +524,13 @@ func main() {
 	// TODO use ENV
 	serverRoot, _ = filepath.Abs("tmp/servers")
 
-	redisClient = createRedisClient()
+	redisClient = redis.New("", 0, "")
 
 	exec.Command("mkdir", "-p", serverRoot).Run()
 
 	discoverRunningServers()
 	cleanOldServers()
 
-	// TODO reserve bound ports
 	// allocate 200 ports starting at 10000 with a 100 port gap
 	portPool = NewIntPool(10000, 200, 100, portsInUse())
 
@@ -537,24 +551,12 @@ func main() {
 
 	// trap signals
 	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGQUIT)
+	signal.Notify(sig, syscall.SIGQUIT|syscall.SIGUSR1)
 
 	// wait for signal
-	<-sig
-	fmt.Println("stopping pinky")
+	signal := <-sig
+	fmt.Println(signal, "stopping pinky")
 	setStateTo("down")
 
-	// wait for no work in progress
-	empty := time.NewTicker(time.Second * 1)
-	jobCount := -1
-	for _ = range empty.C {
-		if jobCount != wipGen.Count {
-			fmt.Println(wipGen.Count, "jobs remaining")
-		}
-		jobCount = wipGen.Count
-
-		if wipGen.Count == 0 {
-			os.Exit(0)
-		}
-	}
+	waitForNoWorkInProgress()
 }

@@ -2,6 +2,8 @@ Vagrant::Config.run do |config|
   config.vm.box = "base"
 
   config.vm.network :hostonly, "10.10.10.15"
+
+  config.vm.customize ["modifyvm", :id, "--memory", 2048]
   
   [20000, 27015, 28015].each do |port|
     config.vm.forward_port port, port
@@ -28,5 +30,10 @@ Vagrant::Config.run do |config|
   config.vm.share_folder "minecraft-essentials",
     "~/funpacks/minecraft-essentials",
     "../funpacks/minecraft-essentials"
+
+  # share minecraft-essentials funpack
+  config.vm.share_folder "dummy.funpack",
+    "~/funpacks/dummy.funpack",
+    "../funpacks/dummy.funpack"
   
 end

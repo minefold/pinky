@@ -2,7 +2,6 @@ package main
 
 import (
 	"syscall"
-	"time"
 )
 
 type ManagedProcess struct {
@@ -19,13 +18,4 @@ func (p *ManagedProcess) IsRunning() bool {
 
 func (p *ManagedProcess) Kill(sig syscall.Signal) {
 	syscall.Kill(p.Pid, sig)
-}
-
-func (p *ManagedProcess) Wait() {
-	ticker := time.NewTicker(500 * time.Millisecond)
-	for _ = range ticker.C {
-		if !p.IsRunning() {
-			return
-		}
-	}
 }
