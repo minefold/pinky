@@ -179,12 +179,12 @@ func execWithOutput(cmd *exec.Cmd) (err error) {
 		return
 	}
 	go io.Copy(os.Stdout, stdout)
+	defer stdout.Close()
+
 	go io.Copy(os.Stderr, stderr)
+	defer stderr.Close()
+
 	err = cmd.Wait()
-
-	stdout.Close()
-	stderr.Close()
-
 	return
 }
 
@@ -250,22 +250,19 @@ func (s *Server) PrepareServerPath() {
 	// funpack/server directory like TF2 does
 	// maybe a check for the existence of a backup script
 
-	workingDirectory := filepath.Join(s.Path, "working")
-	exec.Command("rm", "-rf", workingDirectory).Run()
-	exec.Command("mkdir", "-p", workingDirectory).Run()
+	dirs := []string{"funpack", "working"}
+	for _, dirName := range dirs {
+		dir := filepath.Join(s.Path, dirName)
+		exec.Command("rm", "-rf", dir).Run()
+		exec.Command("mkdir", "-p", dir).Run()
+	}
 }
 
-func (s *Server) DownloadFunpack(funpack string) {
+func (s *Server) DownloadFunpack(funpackUrl string) {
 	funpackPath := filepath.Join(s.Path, "funpack")
-
-	// TODO this should be downloading/untarring from s3
-	cmd := exec.Command(
-		"rsync",
-		"-a",
-		"/home/vagrant/funpacks/dummy.funpack/",
-		funpackPath)
-	err := execWithOutput(cmd)
+	err := restoreDir(funpackUrl, funpackPath)
 	if err != nil {
+		// TODO handle
 		panic(err)
 	}
 
@@ -306,6 +303,24 @@ func (s *Server) BackupWorld(backupTime time.Time) (key string, err error) {
 	err = execWithOutput(cmd)
 
 	return
+}
+
+func restoreDir(source string, dest string) error {
+	var cmd *exec.Cmd
+
+	if strings.Contains(source, "s3://") {
+		restoreDirBin, _ := filepath.Abs("bin/restore-dir")
+
+		cmd = exec.Command(restoreDirBin, source)
+		cmd.Dir = dest
+	} else {
+		cmd = exec.Command(
+			"rsync",
+			"-a",
+			source,
+			dest)
+	}
+	return execWithOutput(cmd)
 }
 
 func (s *Server) backupPaths() string {

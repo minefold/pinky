@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"github.com/simonz05/godis/redis"
 	"labix.org/v2/mgo/bson"
+	"os"
+	"strconv"
 	"time"
 )
 
@@ -44,7 +46,7 @@ func startServer(serverId string) {
 	r.Lpush("jobs/1", []byte(fmt.Sprintf(`{
 		"name":"start",
 		"serverId":"%s",
-		"funpack":"minecraft-essentials",
+		"funpack":"/home/vagrant/funpacks/minecraft-vanilla/",
 		"ram": { "min": 512, "max": 512  },
 		"settings": {}
 	}`, serverId)))
@@ -67,6 +69,10 @@ func countServersTo(serverCount chan int, target int) {
 
 func main() {
 	maxServers := 100
+	if len(os.Args) > 1 {
+		maxServers, _ = strconv.Atoi(os.Args[1])
+	}
+
 	r = redis.New("", 0, "")
 
 	upServerCount := make(chan int, maxServers*10)
