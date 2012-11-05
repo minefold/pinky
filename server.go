@@ -22,11 +22,12 @@ type Server struct {
 	Port     int
 	HasWorld bool
 	Proc     *ManagedProcess
+	Log      *Logger
 }
 
 type ServerEvent struct {
+	Ts    time.Time
 	Event string
-	At    int64
 	Msg   string
 }
 
@@ -41,6 +42,9 @@ type ServerSettings struct {
 func AttachServer(id string, path string, pid int, port int) *Server {
 	s := &Server{Id: id, Path: path, Pid: pid, Port: port}
 	s.Proc = NewManagedProcess(pid)
+	s.Log = NewLog(map[string]interface{}{
+		"serverId": id,
+	})
 	return s
 }
 
@@ -70,12 +74,14 @@ func (s *Server) processStdout(c chan ServerEvent) {
 		if parseErr == nil {
 			c <- event
 		} else {
-			fmt.Println("Parse error", parseErr, "line:", string(line))
+			plog.Info(map[string]interface{}{
+				"event":    "server_log_ignored",
+				"message":  string(line),
+				"parseErr": parseErr,
+			})
 		}
 		line, isPrefix, err = r.ReadLine()
 	}
-
-	fmt.Println(s.Id, "STDOUT closed")
 
 	close(c)
 }
@@ -130,14 +136,16 @@ func (s *Server) ensureServerStopped() {
 	for {
 		select {
 		case <-timeout:
-			fmt.Println(
-				"timeout waiting for process exit. killing process", s.Pid)
+			plog.Info(map[string]interface{}{
+				"event": "server_exit_timeout",
+				"pid":   s.Pid,
+			})
+
 			syscall.Kill(s.Pid, syscall.SIGTERM)
 			return
 
 		default:
 			if !s.Proc.IsRunning() {
-				fmt.Println(s.Id, "process exited")
 				return
 			}
 
@@ -164,8 +172,12 @@ func (s *Server) Stop() {
 	s.ensureServerStopped()
 }
 
-func execWithOutput(cmd *exec.Cmd) (err error) {
-	// fmt.Println(cmd)
+func execWithOutput(cmd *exec.Cmd, outWriter io.Writer, errWriter io.Writer) (err error) {
+	plog.Info(map[string]interface{}{
+		"event": "exec_command",
+		"cmd":   fmt.Sprintf("[%s] %s %v", cmd.Dir, cmd.Path, cmd.Args),
+	})
+
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return
@@ -178,10 +190,10 @@ func execWithOutput(cmd *exec.Cmd) (err error) {
 	if err != nil {
 		return
 	}
-	go io.Copy(os.Stdout, stdout)
+	go io.Copy(outWriter, stdout)
 	defer stdout.Close()
 
-	go io.Copy(os.Stderr, stderr)
+	go io.Copy(errWriter, stderr)
 	defer stderr.Close()
 
 	err = cmd.Wait()
@@ -225,11 +237,17 @@ func (s *Server) StartServerProcess(pidFile string) (pid int) {
 
 	bufferCmd, _ := filepath.Abs("bin/buffer-process")
 
-	fmt.Println("starting", workingDirectory, bufferCmd, "-d", s.Path, "-p", pidFile, command, serverFile)
+	plog.Info(map[string]interface{}{
+		"event":      "starting_server",
+		"workingDir": workingDirectory,
+		"pidFile":    pidFile,
+		"serverFile": serverFile,
+	})
+
 	cmd := exec.Command(bufferCmd, "-d", s.Path, "-p", pidFile, command, serverFile)
 	cmd.Dir = workingDirectory
 
-	go execWithOutput(cmd)
+	go execWithOutput(cmd, os.Stdout, os.Stderr)
 
 	err := retry(50, 100*time.Millisecond, func() error {
 		var err error
@@ -237,6 +255,7 @@ func (s *Server) StartServerProcess(pidFile string) (pid int) {
 		return err
 	})
 	if err != nil {
+		// TODO recover
 		panic(err)
 	}
 
@@ -276,7 +295,7 @@ func (s *Server) DownloadWorld(world string) {
 	cmd := exec.Command(restoreDirBin, world)
 	cmd.Dir = filepath.Join(s.Path, "working")
 
-	err := execWithOutput(cmd)
+	err := execWithOutput(cmd, os.Stdout, os.Stderr)
 	if err != nil {
 		panic(err)
 	}
@@ -300,7 +319,7 @@ func (s *Server) BackupWorld(backupTime time.Time) (key string, err error) {
 	cmd := exec.Command(archiveDirBin, uri, s.backupPaths())
 	cmd.Dir = s.workingPath()
 
-	err = execWithOutput(cmd)
+	err = execWithOutput(cmd, os.Stdout, os.Stderr)
 
 	return
 }
@@ -320,7 +339,7 @@ func restoreDir(source string, dest string) error {
 			source,
 			dest)
 	}
-	return execWithOutput(cmd)
+	return execWithOutput(cmd, os.Stdout, os.Stderr)
 }
 
 func (s *Server) backupPaths() string {

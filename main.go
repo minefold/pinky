@@ -42,6 +42,7 @@ var servers = map[string]*Server{}
 var serverRoot string
 var wipGen *WipGenerator
 var portPool chan int
+var plog *Logger // pinky logger
 
 func popRedisQueue(c chan Job, queue string) {
 	client := redis.New("", 0, "")
@@ -79,11 +80,17 @@ func startServer(job Job) {
 			Id:   job.ServerId,
 			Path: filepath.Join(serverRoot, job.ServerId),
 			Port: port,
+			Log: NewLog(map[string]interface{}{
+				"serverId": job.ServerId,
+			}),
 		}
 
 		servers[server.Id] = server
 
-		fmt.Println("Starting world", job.ServerId)
+		plog.Info(map[string]interface{}{
+			"event":    "world_starting",
+			"serverId": job.ServerId,
+		})
 
 		pidFile := pidFile(job.ServerId)
 
@@ -111,7 +118,11 @@ func startServer(job Job) {
 			serverJson)
 
 	} else {
-		fmt.Println("Ignoring start request", job.ServerId)
+		plog.Info(map[string]interface{}{
+			"event":  "job_ignored",
+			"reason": "already started",
+			"job":    job,
+		})
 	}
 }
 
@@ -122,13 +133,20 @@ func runBackups(stop chan bool, serverId string) {
 		select {
 		case <-ticker.C:
 			wip := <-wipGen.C
-			fmt.Println("starting periodic backup")
+			plog.Info(map[string]interface{}{
+				"event":    "periodic_backup_starting",
+				"serverId": serverId,
+			})
+
 			err := backupServer(serverId)
 			if err != nil {
 				// TODO figure out some recovery scenario
 				panic(err)
 			}
-			fmt.Println("finished periodic backup")
+			plog.Info(map[string]interface{}{
+				"event":    "periodic_backup_completed",
+				"serverId": serverId,
+			})
 			wip <- true
 
 		case <-stop:
@@ -154,7 +172,14 @@ func processServerEvents(serverId string, events chan ServerEvent) {
 
 	var wip chan bool
 	for event := range events {
-		fmt.Println(event)
+		plog.Info(map[string]interface{}{
+			"ts":          event.Ts,
+			"event":       "server_event",
+			"serverId":    serverId,
+			"serverEvent": event.Event,
+			"serverMsg":   event.Msg,
+		})
+
 		switch event.Event {
 		case "started":
 			transitionStartingToUp(serverId)
@@ -173,20 +198,30 @@ func processServerEvents(serverId string, events chan ServerEvent) {
 	if hasWorld {
 		stopBackups <- true
 
-		fmt.Println("starting shutdown backup")
+		plog.Info(map[string]interface{}{
+			"event":    "shutdown_backup_starting",
+			"serverId": serverId,
+		})
 		err := backupServer(serverId)
 		if err != nil {
 			// TODO figure out some recovery scenario
 			panic(err)
 		}
-		fmt.Println("finished shutdown backup")
+		plog.Info(map[string]interface{}{
+			"event":    "shutdown_backup_completed",
+			"serverId": serverId,
+		})
+
 	}
 
 	transitionToStopped(serverId)
 	removeServerArtifacts(serverId)
 	portPool <- servers[serverId].Port
 	delete(servers, serverId)
-	fmt.Println(serverId, "stopped")
+	plog.Info(map[string]interface{}{
+		"event":    "server_stopped",
+		"serverId": serverId,
+	})
 }
 
 func backupServer(serverId string) error {
@@ -207,7 +242,10 @@ func backupServer(serverId string) error {
 		var err error
 		key, err = server.BackupWorld(backupTime)
 		if err != nil {
-			fmt.Println("Backup Error:", err)
+			plog.Error(err, map[string]interface{}{
+				"event":    "world_backup",
+				"serverId": serverId,
+			})
 		}
 		return err
 	})
@@ -218,7 +256,11 @@ func backupServer(serverId string) error {
 	err = retry(10, 5*time.Second, func() error {
 		err := storeBackupInMongo(serverId, key, backupTime)
 		if err != nil {
-			fmt.Println("Mongo Storage Error:", err)
+			plog.Error(err, map[string]interface{}{
+				"event":    "world_db_store",
+				"serverId": serverId,
+			})
+
 		}
 		return err
 	})
@@ -237,7 +279,10 @@ func stopServer(job Job) {
 		}
 		server.Stop()
 	} else {
-		fmt.Println("Ignoring stop request", job.ServerId)
+		plog.Info(map[string]interface{}{
+			"event":    "stop request ignored",
+			"serverId": job.ServerId,
+		})
 	}
 }
 
@@ -287,7 +332,10 @@ func redisGet(key string) []byte {
 		var err error
 		result, err = redisClient.Get(key)
 		if err != nil {
-			fmt.Println("redis retry...")
+			plog.Error(err, map[string]interface{}{
+				"event": "redis_get_failed",
+				"key":   key,
+			})
 		}
 		return err
 	})
@@ -301,7 +349,10 @@ func redisDel(key string) int64 {
 		var err error
 		result, err = redisClient.Del(key)
 		if err != nil {
-			fmt.Println("redis retry...")
+			plog.Error(err, map[string]interface{}{
+				"event": "redis_del_failed",
+				"key":   key,
+			})
 		}
 		return err
 	})
@@ -314,7 +365,10 @@ func redisSet(key string, value []byte) {
 		var err error
 		err = redisClient.Set(key, value)
 		if err != nil {
-			fmt.Println("redis retry...")
+			plog.Error(err, map[string]interface{}{
+				"event": "redis_set_failed",
+				"key":   key,
+			})
 		}
 		return err
 	})
@@ -339,7 +393,6 @@ func stateTransition(
 		if enforceStartingCondition {
 			panic(msg)
 		} else {
-			// fmt.Println(msg)
 			return false
 		}
 	}
@@ -388,7 +441,11 @@ func processJobs(jobChannel chan Job) {
 		job := <-jobChannel
 
 		if string(getState()) == "down" {
-			fmt.Println("ignoring job: pinky is down")
+			plog.Info(map[string]interface{}{
+				"event":  "job_ignored",
+				"reason": "pinky is down",
+				"job":    job,
+			})
 			continue
 		}
 
@@ -405,7 +462,11 @@ func processJobs(jobChannel chan Job) {
 			go stopServer(job)
 
 		default:
-			fmt.Println("Unknown job", job)
+			plog.Info(map[string]interface{}{
+				"event":  "job_ignored",
+				"reason": "job unknown",
+				"job":    job,
+			})
 		}
 	}
 }
@@ -442,18 +503,30 @@ func discoverRunningServers() {
 			panic(err)
 		}
 		serverPath := serverPath(serverId)
-		fmt.Println(
-			fmt.Sprintf("found pid_file=%s path=%s", pidFile, serverPath))
+		plog.Info(map[string]interface{}{
+			"event":      "server_pid_found",
+			"pidFile":    pidFile,
+			"serverPath": serverPath,
+		})
 
 		if isAlive(pid) {
-			fmt.Println("found running server", serverId, "pid", pid)
+			plog.Info(map[string]interface{}{
+				"event":    "running_server",
+				"serverId": serverId,
+				"pid":      pid,
+			})
 
 			key := pinkyServerKey(serverId)
 			var serverInfo RedisServerInfo
 			jsonVal := redisGet(key)
 			err = json.Unmarshal(jsonVal, &serverInfo)
 			if err != nil {
-				fmt.Println(key, jsonVal)
+				plog.Error(err, map[string]interface{}{
+					"event":    "read_server_redis",
+					"rawValue": jsonVal,
+				})
+
+				// TODO recover
 				panic(err)
 			}
 
@@ -467,7 +540,11 @@ func discoverRunningServers() {
 			go processServerEvents(serverId, events)
 
 		} else {
-			fmt.Println("found dead process", pid)
+			plog.Info(map[string]interface{}{
+				"event": "dead_server_found",
+				"pid":   pid,
+			})
+
 			removeServerArtifacts(serverId)
 		}
 	}
@@ -481,8 +558,12 @@ func cleanOldServers() {
 	for _, key := range keys {
 		serverId := strings.Split(key, "/")[3]
 		if _, ok := servers[serverId]; !ok {
-			fmt.Println("removing old dead server", serverId)
 			removeServerArtifacts(serverId)
+			plog.Info(map[string]interface{}{
+				"event":    "dead_server_removed",
+				"serverId": serverId,
+			})
+
 		}
 	}
 }
@@ -500,7 +581,10 @@ func waitForNoWorkInProgress() {
 	jobCount := -1
 	for _ = range empty.C {
 		if jobCount != wipGen.Count {
-			fmt.Println(wipGen.Count, "jobs remaining")
+			plog.Info(map[string]interface{}{
+				"event": "waiting_wip_remaining",
+				"count": wipGen.Count,
+			})
 		}
 		jobCount = wipGen.Count
 
@@ -511,6 +595,8 @@ func waitForNoWorkInProgress() {
 }
 
 func main() {
+	boxId = os.Args[1]
+	plog = NewLog(map[string]interface{}{"boxId": boxId})
 	if r := recover(); r != nil {
 		// TODO bugsnag
 		fmt.Println("ERMAHGERD FERTEL ERRERRRR! ಠ_ಠ")
@@ -518,8 +604,6 @@ func main() {
 	}
 
 	wipGen = NewWipGenerator()
-
-	boxId = os.Args[1]
 
 	// TODO use ENV
 	serverRoot, _ = filepath.Abs("tmp/servers")
@@ -542,11 +626,13 @@ func main() {
 	go heartbeat()
 
 	setStateTo("up")
-	fmt.Println(
-		fmt.Sprintf("[%d] queue=%s servers=%s",
-			os.Getpid(),
-			boxQueueKey,
-			serverRoot))
+
+	plog.Out("info", map[string]interface{}{
+		"event":   "pinky_up",
+		"queue":   boxQueueKey,
+		"servers": serverRoot,
+	})
+
 	go processJobs(jobChannel)
 
 	// trap signals
@@ -555,7 +641,11 @@ func main() {
 
 	// wait for signal
 	signal := <-sig
-	fmt.Println(signal, "stopping pinky")
+	plog.Info(map[string]interface{}{
+		"event":  "pinky_stopping",
+		"signal": signal,
+	})
+
 	setStateTo("down")
 
 	waitForNoWorkInProgress()
