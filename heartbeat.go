@@ -7,40 +7,49 @@ import (
 )
 
 type hbJson struct {
-	Disk  map[string]DiskUsage `json:"disk"`
-	Procs map[string]ProcUsage `json:"procs"`
+	BoxType    string `json:"instanceType"`
+	FreeDiskMb int    `json:"freeDiskMb"`
+	FreeRamMb  int    `json:"freeRamMb"`
+	IdleCpu    int    `json:"idleCpu"`
 }
 
-func heartbeat() {
+func heartbeat(instanceType string, serverRoot string) {
 	ticker := time.NewTicker(time.Second * 10)
 	for _ = range ticker.C {
-		json := heartbeatJson()
-		key := fmt.Sprintf("pinky/%s/resources", boxId)
+		json, err := heartbeatJson(instanceType, serverRoot)
+		if err != nil {
+			plog.Error(err, map[string]interface{}{
+				"event": "heartbeat_failed",
+			})
+			return
+		}
 
+		key := fmt.Sprintf("pinky/%s/heartbeat", boxId)
 		redisClient.Setex(key, 20, json)
 	}
 }
 
-func heartbeatJson() []byte {
-	procUsages, _ := CollectProcUsage()
-	diskUsages, _ := CollectDiskUsage()
+func heartbeatJson(instanceType string, serverRoot string) ([]byte, error) {
+	vmStat, err := GetVmStat()
+	if err != nil {
+		return nil, err
+	}
+	diskUsage, err := CollectDiskUsage(serverRoot)
+	if err != nil {
+		return nil, err
+	}
 
 	v := hbJson{
-		Disk:  make(map[string]DiskUsage),
-		Procs: make(map[string]ProcUsage),
-	}
-
-	for _, diskUsage := range diskUsages {
-		v.Disk[diskUsage.Name] = diskUsage
-	}
-	for _, procUsage := range procUsages {
-		v.Procs[fmt.Sprintf("%d", procUsage.Pid)] = procUsage
+		BoxType:    instanceType,
+		FreeDiskMb: diskUsage.MbTotal - diskUsage.MbUsed,
+		FreeRamMb:  vmStat.FreeMb,
+		IdleCpu:    vmStat.IdleCpu,
 	}
 
 	json, err := json.Marshal(v)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
-	return json
+	return json, nil
 }

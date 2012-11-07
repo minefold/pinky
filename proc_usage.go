@@ -32,7 +32,7 @@ func CollectProcUsage() ([]ProcUsage, error) {
 		}
 
 		// extract space separated columnds
-		cols := splitColumns(l, 10)
+		cols := splitColumns(l)
 
 		// create struct
 		pid, _ := strconv.Atoi(cols[0])

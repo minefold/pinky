@@ -45,13 +45,13 @@ var portPool chan int
 var plog *Logger // pinky logger
 
 func popRedisQueue(c chan Job, queue string) {
-	client := redis.New("", 0, "")
+	client := redis.New(os.Getenv("REDIS_URI"), 0, "")
 	for {
-		reply, e := client.Brpop([]string{queue}, 60)
+		reply, e := client.Brpop([]string{queue}, 2)
 		if e != nil {
-			// TODO check if this is a real error
-			// most commonly it's the pop timing out
-			// fmt.Println("redis error", e)
+			if !strings.Contains(e.Error(), "timeout expired") {
+				fmt.Println("redis error: %T", e)
+			}
 		} else {
 			val := reply.BytesArray()[1]
 
@@ -550,10 +550,10 @@ func discoverRunningServers() {
 	}
 }
 
-func cleanOldServers() {
+func cleanOldServers() error {
 	keys, err := redisClient.Keys(pinkyServersKey())
 	if err != nil {
-		panic(err)
+		return err
 	}
 	for _, key := range keys {
 		serverId := strings.Split(key, "/")[3]
@@ -566,6 +566,7 @@ func cleanOldServers() {
 
 		}
 	}
+	return nil
 }
 
 func portsInUse() []int {
@@ -596,6 +597,8 @@ func waitForNoWorkInProgress() {
 
 func main() {
 	boxId = os.Args[1]
+	instanceType := "blahblah" //os.Args[2]
+
 	plog = NewLog(map[string]interface{}{"boxId": boxId})
 	if r := recover(); r != nil {
 		// TODO bugsnag
@@ -608,12 +611,15 @@ func main() {
 	// TODO use ENV
 	serverRoot, _ = filepath.Abs("tmp/servers")
 
-	redisClient = redis.New("", 0, "")
+	redisClient = redis.New(os.Getenv("REDIS_URI"), 0, "")
 
 	exec.Command("mkdir", "-p", serverRoot).Run()
 
 	discoverRunningServers()
-	cleanOldServers()
+	err := cleanOldServers()
+	if err != nil {
+		panic(err)
+	}
 
 	// allocate 200 ports starting at 10000 with a 100 port gap
 	portPool = NewIntPool(10000, 200, 100, portsInUse())
@@ -623,7 +629,7 @@ func main() {
 	go popRedisQueue(jobChannel, boxQueueKey)
 
 	// start heartbeat
-	go heartbeat()
+	go heartbeat(instanceType, serverRoot)
 
 	setStateTo("up")
 
@@ -637,7 +643,7 @@ func main() {
 
 	// trap signals
 	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGQUIT|syscall.SIGUSR1)
+	signal.Notify(sig, syscall.SIGQUIT)
 
 	// wait for signal
 	signal := <-sig

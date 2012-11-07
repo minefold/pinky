@@ -10,6 +10,7 @@ import (
 )
 
 var r *redis.Client
+var boxId string
 
 func watchServers(liveServersCount chan int, upServersCount chan int) {
 	prevLive := 0
@@ -42,8 +43,12 @@ func watchServers(liveServersCount chan int, upServersCount chan int) {
 	}
 }
 
+func jobQ() string {
+	return fmt.Sprintf("jobs/%s", boxId)
+}
+
 func startServer(serverId string) {
-	r.Lpush("jobs/1", []byte(fmt.Sprintf(`{
+	r.Lpush(jobQ(), []byte(fmt.Sprintf(`{
 		"name":"start",
 		"serverId":"%s",
 		"funpack":"/home/vagrant/funpacks/minecraft-vanilla/",
@@ -53,7 +58,7 @@ func startServer(serverId string) {
 }
 
 func stopServer(serverId string) {
-	r.Lpush("jobs/1", []byte(fmt.Sprintf(`{
+	r.Lpush(jobQ(), []byte(fmt.Sprintf(`{
 		"name":"stop",
 		"serverId":"%s"}`, serverId)))
 }
@@ -71,9 +76,10 @@ func main() {
 	maxServers := 100
 	if len(os.Args) > 1 {
 		maxServers, _ = strconv.Atoi(os.Args[1])
+		boxId = os.Args[2]
 	}
 
-	r = redis.New("", 0, "")
+	r = redis.New(os.Getenv("REDIS_URI"), 0, "")
 
 	upServerCount := make(chan int, maxServers*10)
 	liveServerCount := make(chan int, maxServers*10)

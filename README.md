@@ -10,7 +10,8 @@ pinky <box-id>
 
 AWS_ACCESS_KEY=DLHDLKJHDLKJHDLKH
 AWS_SECRET_KEY=DSLKSJDHFLDKJHFLDSKJHFDSLKJHDLS
-MONGO_URI=mongodb://localhost:27017/partycloud
+MONGO_URI=mongodb://10.0.2.2:27017/partycloud
+REDIS_URI=tcp:10.0.2.2:6379
 
 ## How it works
 
@@ -151,7 +152,8 @@ pinky/1/servers/1234 { # JSON
 server/state/1234 "up"
 
 * Updated every 10 seconds:
-pinky/1/resources { # HASH
+pinky/1/heartbeat { # HASH
+  "instanceType" => { "c1.xlarge" },
   "disk" => {
     "/dev/sda1" => { "used" => 1639, "total" => 8156 },
     "/dev/md0"  => { "used" => 8553, "total" => 3438696 }

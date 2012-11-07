@@ -12,8 +12,8 @@ type DiskUsage struct {
 	MbTotal int    `json:"total"`
 }
 
-func splitColumns(line string, max int) []string {
-	cols := make([]string, 0, max)
+func splitColumns(line string) []string {
+	cols := make([]string, 0)
 	for _, f := range strings.Split(line, " ") {
 		if len(f) > 0 {
 			cols = append(cols, f)
@@ -22,13 +22,11 @@ func splitColumns(line string, max int) []string {
 	return cols
 }
 
-func CollectDiskUsage() ([]DiskUsage, error) {
-	out, err := exec.Command("df", "-m").Output()
+func CollectDiskUsage(path string) (*DiskUsage, error) {
+	out, err := exec.Command("df", "-m", path).Output()
 	if err != nil {
 		return nil, err
 	}
-
-	usages := make([]DiskUsage, 0, 10)
 
 	lines := strings.Split(string(out), "\n")
 	for i, l := range lines {
@@ -38,20 +36,16 @@ func CollectDiskUsage() ([]DiskUsage, error) {
 		}
 
 		// extract space separated columnds
-		cols := splitColumns(l, 10)
+		cols := splitColumns(l)
 
-		// create struct
 		total, _ := strconv.Atoi(cols[1])
 		used, _ := strconv.Atoi(cols[2])
 
-		usages = append(usages, DiskUsage{
+		return &DiskUsage{
 			Name:    cols[0],
 			MbUsed:  used,
 			MbTotal: total,
-		})
-		// n, err := strconv.Atoi(l)
-		// if err != nil { return nil, err }
-		// nums = append(nums, n)
+		}, nil
 	}
-	return usages, nil
+	return nil, nil
 }
