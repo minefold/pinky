@@ -1,3 +1,7 @@
+execute "apt-get update" do
+  command "apt-get update"
+end
+
 %w(
   build-essential
   ruby1.9.1
