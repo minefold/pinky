@@ -26,16 +26,15 @@ brpop /box/1/queue
   - server_id
   - server settings
   - max ram
-  - # of server slots
 
 Example:
 
 {
   "name"=>"start",
   "serverId"=>"1234",
-  "funpack"=>"s3://minefold-development/funpacks/dummy/1.tar.lzo",
+  "funpack"=>"https://minefold-development.s3.amazonaws.com/funpacks/dummy/1.tar.lzo",
   "ram"=>{"min"=>1024, "max"=>1024},
-  "world"=>"s3://minefold-development/worlds/501c6845c3b5a06485000002/world-data.incremental.tar.lzo",
+  "world"=>"https://minefold-development.s3.amazonaws.com/worlds/501c6845c3b5a06485000002/world-data.incremental.tar.lzo",
   "settings"=>{
     "banned"=>["atnan"],
     "game_mode"=>1,
@@ -89,34 +88,37 @@ $SERVERS/1234/backup    (ditto)
 * Notify process exit
 * Watch for stdout lines (should be JSON)
 
-  event=started at=234897
-
-  { at: ISO-6601!!!!, event: started, ... }
-
-  EVENT TYPES
-    started
-    stopping
-    player_connected      { playername: '..' }
-    player_disconnected
-    chatted
-    * connected_players
-
-    settings_changed { type: 'opped', actor_playername: 'whatupdave',
-                          target_playername: 'chrislloyd'
-      opped
-      deopped
-      whitelist_added
-      whitelist_removed
-      banned
-      pardoned
-
-    info          { event: info, msg: 'bukkit outta date yall'}
-    warning       { event: warning, type: 'stressed' }
-    critical      { event: critical,
-                    type: 'unknown',
-                    msg: 'Java.Bullshit.Error occurred on line 69' }
+.
+    
+    event=started at=234897
+    { at: ISO-6601, event: started, ... }
+    
+    
+    EVENT TYPES
+      started
+      stopping
+      player_connected      { playername: '..' }
+      player_disconnected
+      chatted
+      * connected_players
+    
+      settings_changed { type: 'opped', actor_playername: 'whatupdave',
+                            target_playername: 'chrislloyd'
+        opped
+        deopped
+        whitelist_added
+        whitelist_removed
+        banned
+        pardoned
+    
+      info          { event: info, msg: 'bukkit outta date yall'}
+      warning       { event: warning, type: 'stressed' }
+      critical      { event: critical,
+                      type: 'unknown',
+                      msg: 'Java.Bullshit.Error occurred on line 69' }
 
 * on these events:
+  - LPUSH /server/#{id}/events
   - pinky notifies Brain (Resque) (Brain calls webhooks)
   - pinky updates state of servers and box
 
@@ -141,29 +143,24 @@ $SERVERS/1234/backup    (ditto)
 
 * (upstart restarts the process)
 
-## Redis state
-pinky/state/1 up # or down, meaning start jobs will be ignored
+## Redis
 
-pinky/1/servers/1234 { # JSON
-  "pid"  => 2418,
-  "port" => 4083
-}
+    pinky/state/1 (up|down) # when down jobs are ignored
 
-server/state/1234 "up"
+    pinky/1/servers/1234 {
+      "pid"  => 2418,
+      "port" => 4083
+    }
 
-* Updated every 10 seconds:
-pinky/1/heartbeat { # HASH
-  "instanceType" => { "c1.xlarge" },
-  "disk" => {
-    "/dev/sda1" => { "used" => 1639, "total" => 8156 },
-    "/dev/md0"  => { "used" => 8553, "total" => 3438696 }
-  },
-  "ram" => { "used" => 1024, "total" => "4096" },
-}
+    server/state/1234 (starting|up|down)
+
+    pinky/1/heartbeat # Updated every 10 seconds with 30 second timeout
+    
 
 ## Example Jobs
-lpush jobs/1 "{\"name\":\"start\",\"serverId\":\"508227b5474a80599bcab3aa\",\"funpack\":\"s3://minefold-development/funpacks/dummy/1.tar.lzo\",\"ram\": { \"min\": 1024, \"max\": 1024  },\"world\":\"s3://minefold-development/worlds/1234/1234.1350676908.tar.lzo\", \"settings\" : { \"banned\": [\"atnan\"], \"game_mode\": 1, \"new_player_can_build\" : false,\"ops\": [\"chrislloyd\"],\"seed\": 123456789,\"spawn_animals\": true,    \"spawn_monsters\": true,\"whitelisted\": [\"whatupdave\"]  }}"
-lpush jobs/1 "{\"name\":\"stop\",\"serverId\":\"508227b5474a80599bcab3aa\"}"
+
+    lpush jobs/1 "{\"name\":\"start\",\"serverId\":\"508227b5474a80599bcab3aa\",\"funpack\":\"https://minefold-development.s3.amazonaws.com/funpacks/dummy/1.tar.lzo\",\"ram\": { \"min\": 1024, \"max\": 1024  },\"world\":\"https://minefold-development.s3.amazonaws.com/worlds/1234/1234.1350676908.tar.lzo\", \"settings\" : { \"banned\": [\"atnan\"], \"game_mode\": 1, \"new_player_can_build\" : false,\"ops\": [\"chrislloyd\"],\"seed\": 123456789,\"spawn_animals\": true,    \"spawn_monsters\": true,\"whitelisted\": [\"whatupdave\"]  }}"
+    lpush jobs/1 "{\"name\":\"stop\",\"serverId\":\"508227b5474a80599bcab3aa\"}"
 
 ## TODO
 

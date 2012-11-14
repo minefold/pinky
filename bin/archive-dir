@@ -2,7 +2,7 @@
 
 # archive-dir <remote-file>
 
-# archive-dir s3://minefold-production/worlds/501042431376850800000031/world-data.incremental.tar
+# archive-dir https://minefold-production.s3.amazonaws.com/worlds/501042431376850800000031/world-data.incremental.tar
 
 # will compress and upload current directory based on file extension
 # handles tar|tar.gz|tar.lzo
@@ -15,13 +15,7 @@ REMOTE, *compress_args = ARGV
 
 compress_args ||= '.'
 
-if !(REMOTE =~ /s3:\/\/([\w-]+)\/(.*)/)
-  abort "usage: #{$0} <remote-file>"
-end
-
-bucket, key = $1, $2
-
-if File.basename(key) =~ /tar\.?(\w+)?$/
+if File.basename(REMOTE) =~ /tar\.?(\w+)?$/
   ext = $1
   compression = case ext
   when 'gz'
@@ -32,7 +26,7 @@ if File.basename(key) =~ /tar\.?(\w+)?$/
     ''
   end
 else
-  abort "unsupported compression format for #{key}"
+  abort "unsupported compression format for #{REMOTE}"
 end
 
 def run cmd
@@ -41,7 +35,7 @@ def run cmd
   raise "Failed: '#{cmd}'" unless success
 end
 
-Tempfile.open(File.basename(key)) do |f|
+Tempfile.open(File.basename(REMOTE)) do |f|
   run "tar #{compression} -cf #{f.path} #{compress_args.join(' ')}"
-  run "#{S3CURL} --put '#{f.path}' -- https://#{bucket}.s3.amazonaws.com/#{key} --silent --show-error"
+  run "#{S3CURL} --put '#{f.path}' -- #{REMOTE} --silent --show-error"
 end

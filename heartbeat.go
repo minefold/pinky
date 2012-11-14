@@ -7,16 +7,15 @@ import (
 )
 
 type hbJson struct {
-	BoxType    string `json:"instanceType"`
-	FreeDiskMb int    `json:"freeDiskMb"`
-	FreeRamMb  int    `json:"freeRamMb"`
-	IdleCpu    int    `json:"idleCpu"`
+	FreeDiskMb int `json:"freeDiskMb"`
+	FreeRamMb  int `json:"freeRamMb"`
+	IdleCpu    int `json:"idleCpu"`
 }
 
-func heartbeat(instanceType string, serverRoot string) {
+func heartbeat(serverRoot string) {
 	ticker := time.NewTicker(time.Second * 10)
 	for _ = range ticker.C {
-		json, err := heartbeatJson(instanceType, serverRoot)
+		json, err := heartbeatJson(serverRoot)
 		if err != nil {
 			plog.Error(err, map[string]interface{}{
 				"event": "heartbeat_failed",
@@ -29,7 +28,7 @@ func heartbeat(instanceType string, serverRoot string) {
 	}
 }
 
-func heartbeatJson(instanceType string, serverRoot string) ([]byte, error) {
+func heartbeatJson(serverRoot string) ([]byte, error) {
 	vmStat, err := GetVmStat()
 	if err != nil {
 		return nil, err
@@ -40,7 +39,6 @@ func heartbeatJson(instanceType string, serverRoot string) ([]byte, error) {
 	}
 
 	v := hbJson{
-		BoxType:    instanceType,
 		FreeDiskMb: diskUsage.MbTotal - diskUsage.MbUsed,
 		FreeRamMb:  vmStat.FreeMb,
 		IdleCpu:    vmStat.IdleCpu,

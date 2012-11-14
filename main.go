@@ -36,6 +36,14 @@ type RedisServerInfo struct {
 	Port int `json:"port"`
 }
 
+type PinkyServerEvent struct {
+	Ts       time.Time `json:"ts"`
+	PinkyId  string    `json:"pinky_id"`
+	ServerId string    `json:"server_id"`
+	Type     string    `json:"type"`
+	Msg      string    `json:"msg"`
+}
+
 var redisClient *redis.Client
 var boxId string
 var servers = map[string]*Server{}
@@ -71,8 +79,9 @@ func pidFile(serverId string) string {
 	return filepath.Join(serverRoot, fmt.Sprintf("%s.pid", serverId))
 }
 
-func startServer(job Job) {
-	if attemptStartingTransition(job.ServerId) {
+func startServer(job Job) error {
+	// if attemptStartingTransition(job.ServerId) {
+	if _, present := servers[job.ServerId]; !present {
 
 		port := <-portPool
 
@@ -96,7 +105,10 @@ func startServer(job Job) {
 
 		server.PrepareServerPath()
 		if job.World != "" {
-			server.DownloadWorld(job.World)
+			err := server.DownloadWorld(job.World)
+			if err != nil {
+				return err
+			}
 		}
 		server.DownloadFunpack(job.Funpack)
 		server.WriteSettingsFile(
@@ -124,6 +136,7 @@ func startServer(job Job) {
 			"job":    job,
 		})
 	}
+	return nil
 }
 
 func runBackups(stop chan bool, serverId string) {
@@ -188,6 +201,17 @@ func processServerEvents(serverId string, events chan ServerEvent) {
 				wip = <-wipGen.C
 			}
 		}
+
+		pse := PinkyServerEvent{
+			PinkyId:  boxId,
+			ServerId: serverId,
+			Ts:       event.Ts,
+			Type:     event.Event,
+			Msg:      event.Msg,
+		}
+		pseJson, _ := json.Marshal(pse)
+
+		redisClient.Lpush(fmt.Sprintf("server/events"), pseJson)
 	}
 
 	if wip == nil {
@@ -597,7 +621,6 @@ func waitForNoWorkInProgress() {
 
 func main() {
 	boxId = os.Args[1]
-	instanceType := "blahblah" //os.Args[2]
 
 	plog = NewLog(map[string]interface{}{"boxId": boxId})
 	if r := recover(); r != nil {
@@ -625,11 +648,11 @@ func main() {
 	portPool = NewIntPool(10000, 200, 100, portsInUse())
 
 	jobChannel := make(chan Job)
-	boxQueueKey := fmt.Sprintf("jobs/%s", boxId)
+	boxQueueKey := fmt.Sprintf("pinky/%s/jobs", boxId)
 	go popRedisQueue(jobChannel, boxQueueKey)
 
 	// start heartbeat
-	go heartbeat(instanceType, serverRoot)
+	go heartbeat(serverRoot)
 
 	setStateTo("up")
 

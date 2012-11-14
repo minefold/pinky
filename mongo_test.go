@@ -26,7 +26,7 @@ func TestMongoBackupStore(t *testing.T) {
 	}
 
 	backupTime := time.Now()
-	key := "s3://party-cloud-development/worlds/1234.1.tar.lzo"
+	key := "https://party-cloud-development.s3.amazonaws.com/worlds/1234.1.tar.lzo"
 	err = storeBackupInMongo(serverId.Hex(), key, backupTime)
 
 	if err != nil {

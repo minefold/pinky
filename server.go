@@ -289,16 +289,13 @@ func (s *Server) DownloadFunpack(funpackUrl string) {
 		filepath.Join(s.funpackPath(), "bin", "backup-paths"))
 }
 
-func (s *Server) DownloadWorld(world string) {
+func (s *Server) DownloadWorld(world string) error {
 	restoreDirBin, _ := filepath.Abs("bin/restore-dir")
 
 	cmd := exec.Command(restoreDirBin, world)
 	cmd.Dir = filepath.Join(s.Path, "working")
 
-	err := execWithOutput(cmd, os.Stdout, os.Stderr)
-	if err != nil {
-		panic(err)
-	}
+	return execWithOutput(cmd, os.Stdout, os.Stderr)
 }
 
 func (s *Server) BackupWorld(backupTime time.Time) (key string, err error) {
@@ -313,7 +310,7 @@ func (s *Server) BackupWorld(backupTime time.Time) (key string, err error) {
 
 	key = fmt.Sprintf("worlds/%s/%s.%d.tar.lzo", s.Id, s.Id, timestamp)
 
-	uri := fmt.Sprintf("s3://%s/%s", bucket, key)
+	uri := fmt.Sprintf("https://%s.s3.amazonaws.com/%s", bucket, key)
 
 	archiveDirBin, _ := filepath.Abs("bin/archive-dir")
 	cmd := exec.Command(archiveDirBin, uri, s.backupPaths())
@@ -327,7 +324,7 @@ func (s *Server) BackupWorld(backupTime time.Time) (key string, err error) {
 func restoreDir(source string, dest string) error {
 	var cmd *exec.Cmd
 
-	if strings.Contains(source, "s3://") {
+	if strings.Contains(source, "https://") {
 		restoreDirBin, _ := filepath.Abs("bin/restore-dir")
 
 		cmd = exec.Command(restoreDirBin, source)

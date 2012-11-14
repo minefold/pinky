@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
+	"strings"
 	"time"
 )
 
@@ -61,12 +63,14 @@ func printLogMessageJson(data map[string]interface{}) {
 }
 
 func printLogMessageHuman(data map[string]interface{}) {
-	attrs := make(map[string]interface{})
+	attrs := make([]string, 0)
 
 	for k, v := range data {
 		if k != "ts" && k != "level" && k != "event" {
-			attrs[k] = v
+			attrs = append(attrs, fmt.Sprintf("%s=%v", k, v))
 		}
 	}
-	fmt.Println(fmt.Sprintf("%s [%s]", data["ts"], data["level"]), data["event"], attrs)
+
+	sort.Strings(attrs)
+	fmt.Println(fmt.Sprintf("%s [%s]", data["ts"], data["level"]), data["event"], strings.Join(attrs, " "))
 }
