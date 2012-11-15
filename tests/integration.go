@@ -16,7 +16,7 @@ func watchServers(liveServersCount chan int, upServersCount chan int) {
 	prevLive := 0
 	prevUp := 0
 	for {
-		keys, _ := r.Keys("server/state/*")
+		keys, _ := r.Keys("server:*:state")
 
 		liveServers := len(keys)
 		upServers := 0
@@ -44,7 +44,7 @@ func watchServers(liveServersCount chan int, upServersCount chan int) {
 }
 
 func jobQ() string {
-	return fmt.Sprintf("jobs/%s", boxId)
+	return fmt.Sprintf("pinky:%s:in", boxId)
 }
 
 func startServer(serverId string) {

@@ -118,19 +118,19 @@ $SERVERS/1234/backup    (ditto)
                       msg: 'Java.Bullshit.Error occurred on line 69' }
 
 * on these events:
-  - LPUSH /server/#{id}/events
+  - LPUSH server:events
   - pinky notifies Brain (Resque) (Brain calls webhooks)
   - pinky updates state of servers and box
 
 ## Stopping a server
-* set server/state/<server-id> to "stopping"
+* set server:<server-id>:state to "stopping"
 * Stop the process
   - send stop command
   - wait 30 seconds
   - kill process if still alive
 * Run the backup if necessary
 * remove server artifacts
-  - del server/state/<server-id>
+  - del server:<server-id>:state
   - remove pid file
   - remove server path
 
@@ -145,22 +145,22 @@ $SERVERS/1234/backup    (ditto)
 
 ## Redis
 
-    pinky/state/1 (up|down) # when down jobs are ignored
+    pinky:1:state (up|down) # when down jobs are ignored
 
-    pinky/1/servers/1234 {
+    pinky:1:servers:1234 {
       "pid"  => 2418,
       "port" => 4083
     }
 
-    server/state/1234 (starting|up|down)
+    server:1234:state (starting|up|down)
 
-    pinky/1/heartbeat # Updated every 10 seconds with 30 second timeout
+    pinky:1:heartbeat # Updated every 10 seconds with 30 second timeout
     
 
 ## Example Jobs
 
-    lpush jobs/1 "{\"name\":\"start\",\"serverId\":\"508227b5474a80599bcab3aa\",\"funpack\":\"https://minefold-development.s3.amazonaws.com/funpacks/dummy/1.tar.lzo\",\"ram\": { \"min\": 1024, \"max\": 1024  },\"world\":\"https://minefold-development.s3.amazonaws.com/worlds/1234/1234.1350676908.tar.lzo\", \"settings\" : { \"banned\": [\"atnan\"], \"game_mode\": 1, \"new_player_can_build\" : false,\"ops\": [\"chrislloyd\"],\"seed\": 123456789,\"spawn_animals\": true,    \"spawn_monsters\": true,\"whitelisted\": [\"whatupdave\"]  }}"
-    lpush jobs/1 "{\"name\":\"stop\",\"serverId\":\"508227b5474a80599bcab3aa\"}"
+    lpush pinky:1:in "{\"name\":\"start\",\"serverId\":\"508227b5474a80599bcab3aa\",\"funpack\":\"https://minefold-development.s3.amazonaws.com/funpacks/dummy/1.tar.lzo\",\"ram\": { \"min\": 1024, \"max\": 1024  },\"world\":\"https://minefold-development.s3.amazonaws.com/worlds/1234/1234.1350676908.tar.lzo\", \"settings\" : { \"banned\": [\"atnan\"], \"game_mode\": 1, \"new_player_can_build\" : false,\"ops\": [\"chrislloyd\"],\"seed\": 123456789,\"spawn_animals\": true,    \"spawn_monsters\": true,\"whitelisted\": [\"whatupdave\"]  }}"
+    lpush pinky:1:in "{\"name\":\"stop\",\"serverId\":\"508227b5474a80599bcab3aa\"}"
 
 ## TODO
 

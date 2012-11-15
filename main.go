@@ -126,7 +126,7 @@ func startServer(job Job) error {
 			panic(err)
 		}
 		redisClient.Set(
-			fmt.Sprintf("pinky/%s/servers/%s", boxId, job.ServerId),
+			fmt.Sprintf("pinky:%s:servers:%s", boxId, job.ServerId),
 			serverJson)
 
 	} else {
@@ -211,7 +211,7 @@ func processServerEvents(serverId string, events chan ServerEvent) {
 		}
 		pseJson, _ := json.Marshal(pse)
 
-		redisClient.Lpush(fmt.Sprintf("server/events"), pseJson)
+		redisClient.Lpush(fmt.Sprintf("server:events"), pseJson)
 	}
 
 	if wip == nil {
@@ -315,9 +315,9 @@ func removeServerArtifacts(serverId string) {
 	exec.Command("rm", "-rf", serverPath(serverId)).Run()
 
 	redisClient.Del(
-		fmt.Sprintf("pinky/%s/servers/%s", boxId, serverId))
+		fmt.Sprintf("pinky:%s:servers:%s", boxId, serverId))
 	redisClient.Del(
-		fmt.Sprintf("server/state/%s", serverId))
+		fmt.Sprintf("server:%s:state", serverId))
 }
 
 func handleRedisError(err error) {
@@ -328,15 +328,15 @@ func handleRedisError(err error) {
 }
 
 func stateKey(serverId string) string {
-	return fmt.Sprintf("server/state/%s", serverId)
+	return fmt.Sprintf("server:%s:state", serverId)
 }
 
 func pinkyServerKey(serverId string) string {
-	return fmt.Sprintf("pinky/%s/servers/%s", boxId, serverId)
+	return fmt.Sprintf("pinky:%s:servers:%s", boxId, serverId)
 }
 
 func pinkyServersKey() string {
-	return fmt.Sprintf("pinky/%s/servers/*", boxId)
+	return fmt.Sprintf("pinky:%s:servers:*", boxId)
 }
 
 func retry(maxRetries int, delay time.Duration, work func() error) error {
@@ -451,12 +451,12 @@ func transitionToStopped(serverId string) {
 }
 
 func getState() []byte {
-	key := fmt.Sprintf("pinky/%s/state", boxId)
+	key := fmt.Sprintf("pinky:%s:state", boxId)
 	return redisGet(key)
 }
 
 func setStateTo(state string) {
-	key := fmt.Sprintf("pinky/%s/state", boxId)
+	key := fmt.Sprintf("pinky:%s:state", boxId)
 	redisClient.Set(key, []byte(state))
 }
 
@@ -648,7 +648,7 @@ func main() {
 	portPool = NewIntPool(10000, 200, 100, portsInUse())
 
 	jobChannel := make(chan Job)
-	boxQueueKey := fmt.Sprintf("pinky/%s/jobs", boxId)
+	boxQueueKey := fmt.Sprintf("pinky:%s:in", boxId)
 	go popRedisQueue(jobChannel, boxQueueKey)
 
 	// start heartbeat

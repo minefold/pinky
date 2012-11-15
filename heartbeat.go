@@ -23,7 +23,7 @@ func heartbeat(serverRoot string) {
 			return
 		}
 
-		key := fmt.Sprintf("pinky/%s/heartbeat", boxId)
+		key := fmt.Sprintf("pinky:%s:heartbeat", boxId)
 		redisClient.Setex(key, 20, json)
 	}
 }
