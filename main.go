@@ -580,7 +580,7 @@ func cleanOldServers() error {
 		return err
 	}
 	for _, key := range keys {
-		serverId := strings.Split(key, "/")[3]
+		serverId := strings.Split(key, ":")[3]
 		if _, ok := servers[serverId]; !ok {
 			removeServerArtifacts(serverId)
 			plog.Info(map[string]interface{}{
