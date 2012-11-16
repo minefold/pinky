@@ -27,7 +27,7 @@ func openMongoSession(mongoUrl string) (session *mgo.Session, db *mgo.Database, 
 
 func storeBackupInMongo(serverId string,
 	key string, backupTime time.Time) (err error) {
-	session, db, err := openMongoSession(os.Getenv("MONGO_URI"))
+	session, db, err := openMongoSession(os.Getenv("MONGO_URL"))
 	if err != nil {
 		return
 	}

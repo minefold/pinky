@@ -11,7 +11,7 @@ import (
 )
 
 func TestMongoBackupStore(t *testing.T) {
-	session, db, err := openMongoSession(os.Getenv("MONGO_URI"))
+	session, db, err := openMongoSession(os.Getenv("MONGO_URL"))
 	if err != nil {
 		t.Error(err)
 	}
