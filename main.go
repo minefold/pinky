@@ -53,7 +53,7 @@ var portPool chan int
 var plog *Logger // pinky logger
 
 func popRedisQueue(c chan Job, queue string) {
-	client := redis.New(os.Getenv("REDIS_URL"), 0, "")
+	client := NewRedisConnection()
 	for {
 		reply, e := client.Brpop([]string{queue}, 2)
 		if e != nil {
@@ -634,7 +634,7 @@ func main() {
 	// TODO use ENV
 	serverRoot, _ = filepath.Abs("tmp/servers")
 
-	redisClient = redis.New(os.Getenv("REDIS_URL"), 0, "")
+	redisClient = NewRedisConnection()
 
 	exec.Command("mkdir", "-p", serverRoot).Run()
 

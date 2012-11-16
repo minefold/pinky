@@ -79,7 +79,7 @@ func main() {
 		boxId = os.Args[2]
 	}
 
-	r = redis.New(os.Getenv("REDIS_URL"), 0, "")
+	r = NewRedisConnection()
 
 	upServerCount := make(chan int, maxServers*10)
 	liveServerCount := make(chan int, maxServers*10)
