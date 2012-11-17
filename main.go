@@ -622,6 +622,9 @@ func waitForNoWorkInProgress() {
 func main() {
 	boxId = os.Args[1]
 
+	// DEBUGGING
+	fmt.Println(os.Environ())
+
 	plog = NewLog(map[string]interface{}{"boxId": boxId})
 	if r := recover(); r != nil {
 		// TODO bugsnag
