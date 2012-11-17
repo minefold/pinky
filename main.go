@@ -622,9 +622,6 @@ func waitForNoWorkInProgress() {
 func main() {
 	boxId = os.Args[1]
 
-	// DEBUGGING
-	fmt.Println(os.Environ())
-
 	plog = NewLog(map[string]interface{}{"boxId": boxId})
 	if r := recover(); r != nil {
 		// TODO bugsnag
@@ -634,7 +631,7 @@ func main() {
 
 	wipGen = NewWipGenerator()
 
-	serverRoot := os.Getenv("SERVERS_PATH")
+	serverRoot = os.Getenv("SERVERS_PATH")
 	if serverRoot == "" {
 		serverRoot, _ = filepath.Abs("tmp/servers")
 	}

@@ -225,7 +225,6 @@ func (s *Server) WriteSettingsFile(funpack string,
 }
 
 func (s *Server) StartServerProcess(pidFile string) (pid int) {
-
 	serverFile := filepath.Join(s.Path, "server.json")
 	command := filepath.Join(s.Path, "funpack", "bin", "run")
 
