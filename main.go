@@ -631,8 +631,10 @@ func main() {
 
 	wipGen = NewWipGenerator()
 
-	// TODO use ENV
-	serverRoot, _ = filepath.Abs("tmp/servers")
+	serverRoot := os.Getenv("SERVERS_PATH")
+	if serverRoot == "" {
+		serverRoot, _ = filepath.Abs("tmp/servers")
+	}
 
 	redisClient = NewRedisConnection()
 
