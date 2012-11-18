@@ -285,7 +285,7 @@ func (s *Server) DownloadFunpack(funpackUrl string) {
 	}
 
 	s.HasWorld = fileExists(
-		filepath.Join(s.funpackPath(), "bin", "backup-paths"))
+		filepath.Join(s.funpackPath(), "bin", "backup"))
 }
 
 func (s *Server) DownloadWorld(world string) error {
@@ -336,7 +336,7 @@ func restoreDir(source string, dest string) error {
 }
 
 func (s *Server) backupPaths() string {
-	cmd := filepath.Join(s.funpackPath(), "bin", "backup-paths")
+	cmd := filepath.Join(s.funpackPath(), "bin", "backup")
 	paths, err := exec.Command(cmd, s.workingPath()).Output()
 	if err != nil {
 		panic(err)
