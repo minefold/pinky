@@ -336,8 +336,10 @@ func restoreDir(source string, dest string) error {
 }
 
 func (s *Server) backupPaths() string {
-	cmd := filepath.Join(s.funpackPath(), "bin", "backup")
-	paths, err := exec.Command(cmd, s.workingPath()).Output()
+	cmd := exec.Command(filepath.Join(s.funpackPath(), "bin", "backup"))
+	cmd.Dir = s.workingPath()
+
+	paths, err := cmd.Output()
 	if err != nil {
 		panic(err)
 	}
