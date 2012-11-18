@@ -26,7 +26,7 @@ func openMongoSession(mongoUrl string) (session *mgo.Session, db *mgo.Database, 
 }
 
 func storeBackupInMongo(serverId string,
-	key string, backupTime time.Time) (err error) {
+	url string, backupTime time.Time) (err error) {
 	session, db, err := openMongoSession(os.Getenv("MONGO_URL"))
 	if err != nil {
 		return
@@ -36,7 +36,7 @@ func storeBackupInMongo(serverId string,
 	_, err = db.C("worlds").UpsertId(bson.ObjectIdHex(serverId), bson.M{
 		"$set": bson.M{
 			"backed_up_at":    backupTime,
-			"world_data_file": key,
+			"world_data_file": url,
 		},
 	})
 

@@ -289,30 +289,27 @@ func (s *Server) DownloadFunpack(funpackUrl string) {
 }
 
 func (s *Server) DownloadWorld(world string) error {
-	restoreDirBin, _ := filepath.Abs("bin/restore-dir")
-
-	cmd := exec.Command(restoreDirBin, world)
-	cmd.Dir = filepath.Join(s.Path, "working")
-
-	return execWithOutput(cmd, os.Stdout, os.Stderr)
+	return restoreDir(world, filepath.Join(s.Path, "working"))
 }
 
-func (s *Server) BackupWorld(backupTime time.Time) (key string, err error) {
+func (s *Server) BackupWorld(backupTime time.Time) (url string, err error) {
 	if !s.HasWorld {
 		return "", errors.New("Nothing to back up")
 	}
-	// TODO environment stuff
-	environment := "development"
-	bucket := "minefold-" + environment
+
+	bucket := os.Getenv("BACKUP_BUCKET")
+	if bucket == "" {
+		bucket = "minefold-development"
+	}
 
 	timestamp := backupTime.Unix()
 
-	key = fmt.Sprintf("worlds/%s/%s.%d.tar.lzo", s.Id, s.Id, timestamp)
+	key := fmt.Sprintf("worlds/%s/%s.%d.tar.lzo", s.Id, s.Id, timestamp)
 
-	uri := fmt.Sprintf("https://%s.s3.amazonaws.com/%s", bucket, key)
+	url = fmt.Sprintf("https://%s.s3.amazonaws.com/%s", bucket, key)
 
 	archiveDirBin, _ := filepath.Abs("bin/archive-dir")
-	cmd := exec.Command(archiveDirBin, uri, s.backupPaths())
+	cmd := exec.Command(archiveDirBin, url, s.backupPaths())
 	cmd.Dir = s.workingPath()
 
 	err = execWithOutput(cmd, os.Stdout, os.Stderr)

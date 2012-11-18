@@ -261,10 +261,10 @@ func backupServer(serverId string) error {
 	// eg. the world didn't start properly or
 	// this game has no persistent state
 	backupTime := time.Now()
-	var key string
+	var url string
 	err := retry(10, 5*time.Second, func() error {
 		var err error
-		key, err = server.BackupWorld(backupTime)
+		url, err = server.BackupWorld(backupTime)
 		if err != nil {
 			plog.Error(err, map[string]interface{}{
 				"event":    "world_backup",
@@ -278,7 +278,7 @@ func backupServer(serverId string) error {
 	}
 
 	err = retry(10, 5*time.Second, func() error {
-		err := storeBackupInMongo(serverId, key, backupTime)
+		err := storeBackupInMongo(serverId, url, backupTime)
 		if err != nil {
 			plog.Error(err, map[string]interface{}{
 				"event":    "world_db_store",
