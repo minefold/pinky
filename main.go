@@ -79,18 +79,17 @@ func pidFile(serverId string) string {
 	return filepath.Join(serverRoot, fmt.Sprintf("%s.pid", serverId))
 }
 
-func startServer(job Job) error {
-	// if attemptStartingTransition(job.ServerId) {
-	if _, present := servers[job.ServerId]; !present {
+func startServer(serverId string, funpack string, world string, ram string, settings interface{}) error {
+	if _, present := servers[serverId]; !present {
 
 		port := <-portPool
 
 		server := &Server{
-			Id:   job.ServerId,
-			Path: filepath.Join(serverRoot, job.ServerId),
+			Id:   serverId,
+			Path: filepath.Join(serverRoot, serverId),
 			Port: port,
 			Log: NewLog(map[string]interface{}{
-				"serverId": job.ServerId,
+				"serverId": serverId,
 			}),
 		}
 
@@ -98,27 +97,27 @@ func startServer(job Job) error {
 
 		plog.Info(map[string]interface{}{
 			"event":    "world_starting",
-			"serverId": job.ServerId,
+			"serverId": serverId,
 		})
 
-		pidFile := pidFile(job.ServerId)
+		pidFile := pidFile(serverId)
 
 		server.PrepareServerPath()
-		if job.World != "" {
-			err := server.DownloadWorld(job.World)
+		if world != "" {
+			err := server.DownloadWorld(world)
 			if err != nil {
 				return err
 			}
 		}
-		server.DownloadFunpack(job.Funpack)
+		server.DownloadFunpack(funpack)
 		server.WriteSettingsFile(
-			job.Funpack,
-			job.Ram,
-			job.Settings)
+			funpack,
+			ram,
+			settings)
 		pid := server.StartServerProcess(pidFile)
 
 		events := server.Monitor()
-		go processServerEvents(job.ServerId, events)
+		go processServerEvents(serverId, events)
 
 		serverInfo := RedisServerInfo{Pid: pid, Port: port}
 		serverJson, err := json.Marshal(serverInfo)
@@ -126,7 +125,7 @@ func startServer(job Job) error {
 			panic(err)
 		}
 		redisClient.Set(
-			fmt.Sprintf("pinky:%s:servers:%s", boxId, job.ServerId),
+			fmt.Sprintf("pinky:%s:servers:%s", boxId, serverId),
 			serverJson)
 
 	} else {
@@ -292,20 +291,20 @@ func backupServer(serverId string) error {
 	return err
 }
 
-func stopServer(job Job) {
-	if attemptStoppingTransition(job.ServerId) {
+func stopServer(serverId string) {
+	if attemptStoppingTransition(serverId) {
 		wip := <-wipGen.C
 		defer close(wip)
 
-		server := servers[job.ServerId]
+		server := servers[serverId]
 		if server == nil {
-			panic(fmt.Sprintf("no server for %s", job.ServerId))
+			panic(fmt.Sprintf("no server for %s", serverId))
 		}
 		server.Stop()
 	} else {
 		plog.Info(map[string]interface{}{
 			"event":    "stop request ignored",
-			"serverId": job.ServerId,
+			"serverId": serverId,
 		})
 	}
 }
@@ -478,12 +477,17 @@ func processJobs(jobChannel chan Job) {
 		case "start":
 			go func() {
 				wip := <-wipGen.C
-				startServer(job)
+				startServer(
+					job.ServerId,
+					job.Funpack,
+					job.World,
+					job.Ram,
+					job.Settings)
 				close(wip)
 			}()
 
 		case "stop":
-			go stopServer(job)
+			go stopServer(job.ServerId)
 
 		default:
 			plog.Info(map[string]interface{}{

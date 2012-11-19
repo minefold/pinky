@@ -46,7 +46,7 @@ func (l *Logger) Out(level string, data map[string]interface{}) {
 }
 
 func printLogMessage(data map[string]interface{}) {
-	if os.Getenv("LOGFMT") != "human" {
+	if os.Getenv("LOGFMT") == "json" {
 		printLogMessageJson(data)
 	} else {
 		printLogMessageHuman(data)
