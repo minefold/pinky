@@ -213,16 +213,13 @@ func processServerEvents(serverId string, events chan ServerEvent) {
 			}
 		}
 
-		pse := PinkyServerEvent{
+		pushServerEvent(PinkyServerEvent{
 			PinkyId:  boxId,
 			ServerId: serverId,
 			Ts:       event.Ts,
 			Type:     event.Event,
 			Msg:      event.Msg,
-		}
-		pseJson, _ := json.Marshal(pse)
-
-		redisClient.Lpush(fmt.Sprintf("server:events"), pseJson)
+		})
 	}
 
 	if wip == nil {
@@ -256,6 +253,14 @@ func processServerEvents(serverId string, events chan ServerEvent) {
 	removeServerArtifacts(serverId)
 	portPool <- servers[serverId].Port
 	delete(servers, serverId)
+
+	pushServerEvent(PinkyServerEvent{
+		PinkyId:  boxId,
+		ServerId: serverId,
+		Ts:       time.Now(),
+		Type:     "stopped",
+	})
+
 	plog.Info(map[string]interface{}{
 		"event":    "server_stopped",
 		"serverId": serverId,
@@ -305,17 +310,14 @@ func backupServer(serverId string, backupTime time.Time) (err error) {
 		return err
 	})
 
-	pse := PinkyServerEvent{
+	pushServerEvent(PinkyServerEvent{
 		Ts:         backupTime,
 		PinkyId:    boxId,
 		ServerId:   serverId,
 		Type:       "backed_up",
 		SnapshotId: snapshotId.Hex(),
 		Url:        url,
-	}
-	pseJson, _ := json.Marshal(pse)
-
-	redisClient.Lpush("server:events", pseJson)
+	})
 
 	return
 }
@@ -353,6 +355,11 @@ func handleRedisError(err error) {
 	if err != nil {
 		panic(err)
 	}
+}
+
+func pushServerEvent(event PinkyServerEvent) {
+	pseJson, _ := json.Marshal(event)
+	redisClient.Lpush("server:events", pseJson)
 }
 
 func stateKey(serverId string) string {
