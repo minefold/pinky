@@ -6,7 +6,7 @@ import (
 )
 
 func TestDiskCollection(t *testing.T) {
-	usages, err := CollectDiskUsage()
+	diskUsage, err := CollectDiskUsage(".")
 	if err != nil {
 		t.Error(err)
 	}
@@ -15,7 +15,7 @@ func TestDiskCollection(t *testing.T) {
 	// 	fmt.Println(i, usage)
 	// }
 
-	if len(usages) < 2 {
+	if diskUsage.MbUsed == 0 {
 		t.Error("disk usages not returned")
 	}
 }

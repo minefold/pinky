@@ -13,6 +13,7 @@ type hbJson struct {
 }
 
 func heartbeat(serverRoot string) {
+	heartbeatJson(serverRoot)
 	ticker := time.NewTicker(time.Second * 10)
 	for _ = range ticker.C {
 		json, err := heartbeatJson(serverRoot)
@@ -20,7 +21,6 @@ func heartbeat(serverRoot string) {
 			plog.Error(err, map[string]interface{}{
 				"event": "heartbeat_failed",
 			})
-			return
 		}
 
 		key := fmt.Sprintf("pinky:%s:heartbeat", boxId)

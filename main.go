@@ -2,10 +2,11 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
-	// "log"
 	"github.com/simonz05/godis/redis"
 	"io/ioutil"
+	"labix.org/v2/mgo/bson"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -18,12 +19,13 @@ import (
 
 // (start|stop|broadcast|tell|multi)
 type Job struct {
-	Name     string
-	ServerId string
-	Funpack  string
-	Ram      RamAllocation
-	World    string
-	Settings interface{}
+	Name       string
+	ServerId   string
+	Funpack    string
+	Ram        RamAllocation
+	SnapshotId string
+	WorldUrl   string
+	Settings   interface{}
 }
 
 type RamAllocation struct {
@@ -42,6 +44,10 @@ type PinkyServerEvent struct {
 	ServerId string    `json:"server_id"`
 	Type     string    `json:"type"`
 	Msg      string    `json:"msg"`
+
+	// these fields for the backed_up event
+	SnapshotId string `json:"snapshot_id"`
+	Url        string `json:"url"`
 }
 
 var redisClient *redis.Client
@@ -79,7 +85,7 @@ func pidFile(serverId string) string {
 	return filepath.Join(serverRoot, fmt.Sprintf("%s.pid", serverId))
 }
 
-func startServer(serverId string, funpack string, world string, ram string, settings interface{}) error {
+func startServer(serverId string, funpack string, snapshotId string, worldUrl string, ram RamAllocation, settings interface{}) error {
 	if _, present := servers[serverId]; !present {
 
 		port := <-portPool
@@ -103,8 +109,8 @@ func startServer(serverId string, funpack string, world string, ram string, sett
 		pidFile := pidFile(serverId)
 
 		server.PrepareServerPath()
-		if world != "" {
-			err := server.DownloadWorld(world)
+		if worldUrl != "" {
+			err := server.DownloadWorld(worldUrl)
 			if err != nil {
 				return err
 			}
@@ -119,7 +125,10 @@ func startServer(serverId string, funpack string, world string, ram string, sett
 		events := server.Monitor()
 		go processServerEvents(serverId, events)
 
-		serverInfo := RedisServerInfo{Pid: pid, Port: port}
+		serverInfo := RedisServerInfo{
+			Pid:  pid,
+			Port: port,
+		}
 		serverJson, err := json.Marshal(serverInfo)
 		if err != nil {
 			panic(err)
@@ -132,7 +141,7 @@ func startServer(serverId string, funpack string, world string, ram string, sett
 		plog.Info(map[string]interface{}{
 			"event":  "job_ignored",
 			"reason": "already started",
-			"job":    job,
+			"server": serverId,
 		})
 	}
 	return nil
@@ -150,15 +159,18 @@ func runBackups(stop chan bool, serverId string) {
 				"serverId": serverId,
 			})
 
-			err := backupServer(serverId)
+			err := backupServer(serverId, time.Now())
 			if err != nil {
 				// TODO figure out some recovery scenario
-				panic(err)
+				plog.Error(err, map[string]interface{}{
+					"event": "backup_failed",
+				})
 			}
 			plog.Info(map[string]interface{}{
 				"event":    "periodic_backup_completed",
 				"serverId": serverId,
 			})
+
 			wip <- true
 
 		case <-stop:
@@ -225,10 +237,13 @@ func processServerEvents(serverId string, events chan ServerEvent) {
 			"event":    "shutdown_backup_starting",
 			"serverId": serverId,
 		})
-		err := backupServer(serverId)
+		err := backupServer(serverId, time.Now())
 		if err != nil {
 			// TODO figure out some recovery scenario
-			panic(err)
+			plog.Error(errors.New("Shutdown backup failed"), map[string]interface{}{
+				"event":    "shutdown_backup_failed",
+				"serverId": serverId,
+			})
 		}
 		plog.Info(map[string]interface{}{
 			"event":    "shutdown_backup_completed",
@@ -247,21 +262,21 @@ func processServerEvents(serverId string, events chan ServerEvent) {
 	})
 }
 
-func backupServer(serverId string) error {
+func backupServer(serverId string, backupTime time.Time) (err error) {
 	wip := <-wipGen.C
 	defer close(wip)
 
 	server := servers[serverId]
 	if server == nil {
-		panic(fmt.Sprintf("no server for %s", serverId))
+		err = errors.New(fmt.Sprintf("no server for %s", serverId))
+		return
 	}
 
 	// TODO check if we need to do a backup
 	// eg. the world didn't start properly or
 	// this game has no persistent state
-	backupTime := time.Now()
 	var url string
-	err := retry(10, 5*time.Second, func() error {
+	err = retry(10, 5*time.Second, func() error {
 		var err error
 		url, err = server.BackupWorld(backupTime)
 		if err != nil {
@@ -273,11 +288,13 @@ func backupServer(serverId string) error {
 		return err
 	})
 	if err != nil {
-		return err
+		return
 	}
 
+	var snapshotId bson.ObjectId
 	err = retry(10, 5*time.Second, func() error {
-		err := storeBackupInMongo(serverId, url, backupTime)
+		var err error
+		snapshotId, err = storeBackupInMongo(serverId, url, backupTime)
 		if err != nil {
 			plog.Error(err, map[string]interface{}{
 				"event":    "world_db_store",
@@ -288,7 +305,19 @@ func backupServer(serverId string) error {
 		return err
 	})
 
-	return err
+	pse := PinkyServerEvent{
+		Ts:         backupTime,
+		PinkyId:    boxId,
+		ServerId:   serverId,
+		Type:       "backed_up",
+		SnapshotId: snapshotId.Hex(),
+		Url:        url,
+	}
+	pseJson, _ := json.Marshal(pse)
+
+	redisClient.Lpush("server:events", pseJson)
+
+	return
 }
 
 func stopServer(serverId string) {
@@ -480,7 +509,8 @@ func processJobs(jobChannel chan Job) {
 				startServer(
 					job.ServerId,
 					job.Funpack,
-					job.World,
+					job.SnapshotId,
+					job.WorldUrl,
 					job.Ram,
 					job.Settings)
 				close(wip)
