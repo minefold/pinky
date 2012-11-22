@@ -116,6 +116,16 @@ func (s *Server) Monitor() chan ServerEvent {
 
 	go s.processStdout(eventsIn)
 
+	minute := time.NewTicker(60 * time.Second)
+	go func() {
+		for _ = range minute.C {
+			eventsOut <- ServerEvent{
+				Ts:    time.Now(),
+				Event: "minute",
+			}
+		}
+	}()
+
 	go func() {
 		for event := range eventsIn {
 			switch event.Event {
@@ -124,7 +134,7 @@ func (s *Server) Monitor() chan ServerEvent {
 			}
 			eventsOut <- event
 		}
-
+		minute.Stop()
 		close(eventsOut)
 	}()
 
