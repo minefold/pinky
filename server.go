@@ -76,12 +76,18 @@ func (s *Server) processStdout(c chan ServerEvent) {
 		} else {
 			plog.Info(map[string]interface{}{
 				"event":    "server_log_ignored",
+				"serverId": s.Id,
 				"message":  string(line),
 				"parseErr": parseErr,
 			})
 		}
 		line, isPrefix, err = r.ReadLine()
 	}
+
+	plog.Info(map[string]interface{}{
+		"event":    "server_stdout_exit",
+		"serverId": s.Id,
+	})
 
 	close(c)
 }
@@ -116,16 +122,6 @@ func (s *Server) Monitor() chan ServerEvent {
 
 	go s.processStdout(eventsIn)
 
-	minute := time.NewTicker(60 * time.Second)
-	go func() {
-		for _ = range minute.C {
-			eventsOut <- ServerEvent{
-				Ts:    time.Now(),
-				Event: "minute",
-			}
-		}
-	}()
-
 	go func() {
 		for event := range eventsIn {
 			switch event.Event {
@@ -134,7 +130,7 @@ func (s *Server) Monitor() chan ServerEvent {
 			}
 			eventsOut <- event
 		}
-		minute.Stop()
+
 		close(eventsOut)
 	}()
 
@@ -151,7 +147,7 @@ func (s *Server) ensureServerStopped() {
 				"pid":   s.Pid,
 			})
 
-			syscall.Kill(s.Pid, syscall.SIGTERM)
+			s.Kill()
 			return
 
 		default:
@@ -180,6 +176,10 @@ func (s *Server) Stop() {
 
 	stdin.WriteString("stop\n")
 	s.ensureServerStopped()
+}
+
+func (s *Server) Kill() {
+	syscall.Kill(-s.Pid, syscall.SIGTERM)
 }
 
 func execWithOutput(cmd *exec.Cmd, outWriter io.Writer, errWriter io.Writer) (err error) {

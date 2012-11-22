@@ -169,7 +169,6 @@ support BROADCAST job
 support TELL job
 push job accept status (accepted|ignored)
 push job complete status (succeeded|failed)
-recover server not starting and hanging (just run on existing port to test)
 support TCP/UDP port ranges
 recover backups not working (s3 down?)
 

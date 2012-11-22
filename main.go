@@ -123,7 +123,7 @@ func startServer(serverId string, funpack string, snapshotId string, worldUrl st
 		pid := server.StartServerProcess(pidFile)
 
 		events := server.Monitor()
-		go processServerEvents(serverId, events)
+		go processServerEvents(serverId, events, false)
 
 		serverInfo := RedisServerInfo{
 			Pid:  pid,
@@ -176,22 +176,44 @@ func runBackups(stop chan bool, serverId string) {
 		case <-stop:
 			ticker.Stop()
 			return
-
-		default:
-			// TODO check if this is actually needed
-			// I think this sleep might stop the cpu
-			// from getting hammered
-			time.Sleep(1 * time.Second)
 		}
 	}
 }
 
-func processServerEvents(serverId string, events chan ServerEvent) {
-	stopBackups := make(chan bool)
+func startTicking(serverId string, stop chan bool) {
+	minute := time.NewTicker(60 * time.Second)
+	go func() {
+		for {
+			select {
+			case <-minute.C:
+				pushServerEvent(PinkyServerEvent{
+					PinkyId:  boxId,
+					ServerId: serverId,
+					Ts:       time.Now(),
+					Type:     "minute",
+				})
+			case <-stop:
+				minute.Stop()
+			}
+
+		}
+	}()
+}
+
+func processServerEvents(serverId string, events chan ServerEvent, attached bool) {
+	stopBackups := make(chan bool, 1)
+	stopTicks := make(chan bool, 1)
 
 	hasWorld := servers[serverId].HasWorld
 	if hasWorld {
 		go runBackups(stopBackups, serverId)
+	}
+
+	if attached {
+		// we are reattaching to a running server
+		// so we can't wait for a started event
+		// we need to start ticking straight away
+		startTicking(serverId, stopTicks)
 	}
 
 	var wip chan bool
@@ -207,10 +229,13 @@ func processServerEvents(serverId string, events chan ServerEvent) {
 		switch event.Event {
 		case "started":
 			transitionStartingToUp(serverId)
+			startTicking(serverId, stopTicks)
 		case "stopping":
 			if attemptStoppingTransition(serverId) {
 				wip = <-wipGen.C
 			}
+		case "fatal_error":
+			servers[serverId].Kill()
 		}
 
 		pushServerEvent(PinkyServerEvent{
@@ -222,14 +247,22 @@ func processServerEvents(serverId string, events chan ServerEvent) {
 		})
 	}
 
+	plog.Info(map[string]interface{}{
+		"event":    "server_events_exit",
+		"serverId": serverId,
+	})
+
 	if wip == nil {
 		wip = <-wipGen.C
 	}
 	defer close(wip)
 
-	if hasWorld {
-		stopBackups <- true
+	stopTicks <- true
+	stopBackups <- true
 
+	state, _ := redisClient.Get(stateKey(serverId))
+
+	if hasWorld && string(state) != "starting" {
 		plog.Info(map[string]interface{}{
 			"event":    "shutdown_backup_starting",
 			"serverId": serverId,
@@ -246,7 +279,6 @@ func processServerEvents(serverId string, events chan ServerEvent) {
 			"event":    "shutdown_backup_completed",
 			"serverId": serverId,
 		})
-
 	}
 
 	transitionToStopped(serverId)
@@ -277,9 +309,6 @@ func backupServer(serverId string, backupTime time.Time) (err error) {
 		return
 	}
 
-	// TODO check if we need to do a backup
-	// eg. the world didn't start properly or
-	// this game has no persistent state
 	var url string
 	err = retry(10, 5*time.Second, func() error {
 		var err error
@@ -581,9 +610,8 @@ func discoverRunningServers() {
 				"pid":      pid,
 			})
 
-			key := pinkyServerKey(serverId)
 			var serverInfo RedisServerInfo
-			jsonVal := redisGet(key)
+			jsonVal := redisGet(pinkyServerKey(serverId))
 			err = json.Unmarshal(jsonVal, &serverInfo)
 			if err != nil {
 				plog.Error(err, map[string]interface{}{
@@ -602,7 +630,7 @@ func discoverRunningServers() {
 				serverInfo.Port)
 
 			events := servers[serverId].Monitor()
-			go processServerEvents(serverId, events)
+			go processServerEvents(serverId, events, true)
 
 		} else {
 			plog.Info(map[string]interface{}{
