@@ -48,6 +48,10 @@ type PinkyServerEvent struct {
 	// these fields for the backed_up event
 	SnapshotId string `json:"snapshot_id"`
 	Url        string `json:"url"`
+
+	// these fields for the player events
+	Username  string `json:"username"`
+	Usernames string `json:"url"`
 }
 
 var redisClient *redis.Client
@@ -239,11 +243,13 @@ func processServerEvents(serverId string, events chan ServerEvent, attached bool
 		}
 
 		pushServerEvent(PinkyServerEvent{
-			PinkyId:  boxId,
-			ServerId: serverId,
-			Ts:       event.Ts,
-			Type:     event.Event,
-			Msg:      event.Msg,
+			PinkyId:   boxId,
+			ServerId:  serverId,
+			Ts:        event.Ts,
+			Type:      event.Event,
+			Msg:       event.Msg,
+			Username:  event.Username,
+			Usernames: event.Usernames,
 		})
 	}
 
@@ -369,6 +375,14 @@ func stopServer(serverId string) {
 	}
 }
 
+func listPlayers(serverId string) {
+	server := servers[serverId]
+	if server == nil {
+		panic(fmt.Sprintf("no server for %s", serverId))
+	}
+	server.ListPlayers()
+}
+
 func removeServerArtifacts(serverId string) {
 	exec.Command("rm", "-f", pidFile(serverId)).Run()
 	exec.Command("rm", "-rf", serverPath(serverId)).Run()
@@ -377,6 +391,10 @@ func removeServerArtifacts(serverId string) {
 		fmt.Sprintf("pinky:%s:servers:%s", boxId, serverId))
 	redisClient.Del(
 		fmt.Sprintf("server:%s:state", serverId))
+	redisClient.Del(
+		fmt.Sprintf("server:%s:slots", serverId))
+	redisClient.Del(
+		fmt.Sprintf("server:%s:players", serverId))
 }
 
 func handleRedisError(err error) {
@@ -554,6 +572,9 @@ func processJobs(jobChannel chan Job) {
 
 		case "stop":
 			go stopServer(job.ServerId)
+
+		case "list":
+			go listPlayers(job.ServerId)
 
 		default:
 			plog.Info(map[string]interface{}{

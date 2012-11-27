@@ -26,9 +26,11 @@ type Server struct {
 }
 
 type ServerEvent struct {
-	Ts    time.Time
-	Event string
-	Msg   string
+	Ts        time.Time
+	Event     string
+	Msg       string
+	Username  string
+	Usernames string
 }
 
 type ServerSettings struct {
@@ -166,16 +168,25 @@ func (s *Server) parseEvent(line []byte) (event ServerEvent, err error) {
 }
 
 func (s *Server) Stop() {
+	s.Writeln("stop")
+	s.ensureServerStopped()
+}
+
+func (s *Server) ListPlayers() {
+	s.Writeln("list")
+}
+
+func (s *Server) Writeln(line string) error {
 	stdin, err := os.OpenFile(
 		s.stdinPath(), syscall.O_WRONLY|syscall.O_APPEND, 0x0)
 
 	if err != nil {
-		panic(err)
+		return err
 	}
 	defer stdin.Close()
 
-	stdin.WriteString("stop\n")
-	s.ensureServerStopped()
+	stdin.WriteString(line + "\n")
+	return nil
 }
 
 func (s *Server) Kill() {

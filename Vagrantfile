@@ -17,7 +17,6 @@ Vagrant::Config.run do |config|
 
     chef.add_recipe "main"
     chef.add_recipe "golang"
-    chef.add_recipe "redis::server"
     # chef.add_recipe "java"
   end
 
