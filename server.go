@@ -26,11 +26,18 @@ type Server struct {
 }
 
 type ServerEvent struct {
-	Ts        time.Time
-	Event     string
-	Msg       string
+	Ts    time.Time
+	Event string
+	Msg   string
+
+	// these fields for the player events
 	Username  string
 	Usernames string
+
+	// these fields for the settings_changed events
+	Actor string
+	Key   string
+	Value string
 }
 
 type ServerSettings struct {
@@ -170,6 +177,14 @@ func (s *Server) parseEvent(line []byte) (event ServerEvent, err error) {
 func (s *Server) Stop() {
 	s.Writeln("stop")
 	s.ensureServerStopped()
+}
+
+func (s *Server) Broadcast(message string) {
+	s.Writeln("say " + message)
+}
+
+func (s *Server) Tell(username, message string) {
+	s.Writeln("tell " + username + " " + message)
 }
 
 func (s *Server) ListPlayers() {

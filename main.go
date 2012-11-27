@@ -26,6 +26,12 @@ type Job struct {
 	SnapshotId string
 	WorldUrl   string
 	Settings   interface{}
+
+	// for broadcast
+	Msg string
+
+	// for tell
+	Username string
 }
 
 type RamAllocation struct {
@@ -52,6 +58,11 @@ type PinkyServerEvent struct {
 	// these fields for the player events
 	Username  string `json:"username"`
 	Usernames string `json:"url"`
+
+	// these fields for the settings_changed events
+	Actor string `json:"actor"`
+	Key   string `json:"key"`
+	Value string `json:"value"`
 }
 
 var redisClient *redis.Client
@@ -250,6 +261,9 @@ func processServerEvents(serverId string, events chan ServerEvent, attached bool
 			Msg:       event.Msg,
 			Username:  event.Username,
 			Usernames: event.Usernames,
+			Actor:     event.Actor,
+			Key:       event.Key,
+			Value:     event.Value,
 		})
 	}
 
@@ -373,6 +387,22 @@ func stopServer(serverId string) {
 			"serverId": serverId,
 		})
 	}
+}
+
+func broadcast(serverId string, message string) {
+	server := servers[serverId]
+	if server == nil {
+		panic(fmt.Sprintf("no server for %s", serverId))
+	}
+	server.Broadcast(message)
+}
+
+func tell(serverId string, username string, message string) {
+	server := servers[serverId]
+	if server == nil {
+		panic(fmt.Sprintf("no server for %s", serverId))
+	}
+	server.Tell(username, message)
 }
 
 func listPlayers(serverId string) {
@@ -572,6 +602,12 @@ func processJobs(jobChannel chan Job) {
 
 		case "stop":
 			go stopServer(job.ServerId)
+
+		case "broadcast":
+			go broadcast(job.ServerId, job.Msg)
+
+		case "tell":
+			go tell(job.ServerId, job.Username, job.Msg)
 
 		case "list":
 			go listPlayers(job.ServerId)

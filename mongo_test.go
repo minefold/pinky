@@ -33,6 +33,10 @@ func TestFirstSnapshot(t *testing.T) {
 
 	serverId := bson.NewObjectId()
 
+	db.C("servers").Insert(bson.M{
+		"_id": serverId,
+	})
+
 	backupTime := time.Now()
 	url := "https://party-cloud-development.s3.amazonaws.com/worlds/1234.1.tar.lzo"
 	_, err = storeBackupInMongo(serverId.Hex(), url, backupTime)
@@ -47,7 +51,6 @@ func TestFirstSnapshot(t *testing.T) {
 	}
 	db.C("servers").FindId(serverId).One(&server)
 	assertEq(t, "server.Id", server.Id.Hex(), serverId.Hex())
-	assertEq(t, "server.created_at", server.CreatedAt.Format(time.RFC3339), backupTime.Format(time.RFC3339))
 	assertNotEq(t, "server.snapshot_id", server.SnapshotId, nil)
 
 	var snapshot struct {
@@ -73,7 +76,9 @@ func TestSecondSnapshot(t *testing.T) {
 	defer session.Close()
 
 	serverId := bson.NewObjectId()
-
+	db.C("servers").Insert(bson.M{
+		"_id": serverId,
+	})
 	_, err = storeBackupInMongo(serverId.Hex(), "1", time.Now())
 	if err != nil {
 		t.Fatal(err)

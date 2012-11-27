@@ -34,14 +34,14 @@ func storeBackupInMongo(serverId string,
 	}
 	defer session.Close()
 
-	var results []struct {
-		SnapshotId bson.ObjectId "snapshot_id"
+	var results *struct {
+		SnapshotId *bson.ObjectId "snapshot_id"
 	}
 
 	err = db.C("servers").
 		FindId(bson.ObjectIdHex(serverId)).
 		Select(bson.M{"snapshot_id": 1}).
-		All(&results)
+		One(&results)
 
 	if err != nil {
 		return
@@ -49,32 +49,26 @@ func storeBackupInMongo(serverId string,
 
 	var prevSnapshotId *bson.ObjectId
 
-	if len(results) > 0 {
-		prevSnapshotId = &results[0].SnapshotId
-	} else {
-		err = db.C("servers").Insert(bson.M{
-			"_id":        bson.ObjectIdHex(serverId),
-			"created_at": backupTime,
-			"updated_at": backupTime,
-		})
-		if err != nil {
-			return
-		}
+	if results != nil {
+		prevSnapshotId = results.SnapshotId
 	}
 
 	snapshotId = bson.NewObjectId()
-	err = db.C("snapshots").Insert(bson.M{
+	doc := bson.M{
 		"_id":        snapshotId,
 		"created_at": backupTime,
 		"url":        url,
 		"parent":     prevSnapshotId,
-	})
+	}
+
+	err = db.C("snapshots").Insert(doc)
 	if err != nil {
 		return
 	}
 
 	err = db.C("servers").UpdateId(bson.ObjectIdHex(serverId), bson.M{
 		"$set": bson.M{
+			"updated_at":  backupTime,
 			"snapshot_id": snapshotId,
 		},
 	})
