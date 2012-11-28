@@ -67,10 +67,12 @@ func (s *Server) stdinPath() string {
 
 func (s *Server) processStdout(c chan ServerEvent) {
 	stdout, err := os.OpenFile(s.stdoutPath(), syscall.O_RDONLY, 0x0)
-
 	if err != nil {
-		// TODO Handle better
-		panic(err)
+		plog.Error(err, map[string]interface{}{
+			"event":    "process_stdout",
+			"serverId": s.Id,
+		})
+		return
 	}
 
 	defer stdout.Close()
@@ -238,13 +240,10 @@ func execWithOutput(cmd *exec.Cmd, outWriter io.Writer, errWriter io.Writer) (er
 
 func (s *Server) WriteSettingsFile(funpack string,
 	ram RamAllocation,
-	settings interface{}) {
+	settings interface{}) error {
 
 	serverFile := filepath.Join(s.Path, "server.json")
-	// settingsJson, err := settings.MarshalJSON()
-	// if err != nil {
-	// 	panic(err)
-	// }
+
 	server := ServerSettings{
 		Id:       s.Id,
 		Funpack:  funpack,
@@ -254,13 +253,14 @@ func (s *Server) WriteSettingsFile(funpack string,
 	}
 	serverJson, err := json.Marshal(server)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	ioutil.WriteFile(serverFile, serverJson, 0644)
+	return nil
 }
 
-func (s *Server) StartServerProcess(pidFile string) (pid int) {
+func (s *Server) StartServerProcess(pidFile string) (pid int, err error) {
 	serverFile := filepath.Join(s.Path, "server.json")
 	command := filepath.Join(s.Path, "funpack", "bin", "run")
 
@@ -284,18 +284,18 @@ func (s *Server) StartServerProcess(pidFile string) (pid int) {
 
 	go execWithOutput(cmd, os.Stdout, os.Stderr)
 
-	err := retry(50, 100*time.Millisecond, func() error {
+	err = retry(50, 100*time.Millisecond, func() error {
 		var err error
 		_, s.Pid, err = readPidFromFile(pidFile)
 		return err
 	})
 	if err != nil {
 		// TODO recover
-		panic(err)
+		return 0, err
 	}
 
 	s.Proc = NewManagedProcess(cmd.Process.Pid)
-	return s.Pid
+	return s.Pid, nil
 }
 
 func (s *Server) PrepareServerPath() {
@@ -312,16 +312,16 @@ func (s *Server) PrepareServerPath() {
 	}
 }
 
-func (s *Server) DownloadFunpack(funpackUrl string) {
+func (s *Server) DownloadFunpack(funpackUrl string) error {
 	funpackPath := filepath.Join(s.Path, "funpack")
 	err := restoreDir(funpackUrl, funpackPath)
 	if err != nil {
-		// TODO handle
-		panic(err)
+		return err
 	}
 
 	s.HasWorld = fileExists(
 		filepath.Join(s.funpackPath(), "bin", "backup"))
+	return nil
 }
 
 func (s *Server) DownloadWorld(world string) error {
@@ -345,7 +345,11 @@ func (s *Server) BackupWorld(backupTime time.Time) (url string, err error) {
 	url = fmt.Sprintf("https://%s.s3.amazonaws.com/%s", bucket, key)
 
 	archiveDirBin, _ := filepath.Abs("bin/archive-dir")
-	cmd := exec.Command(archiveDirBin, url, s.backupPaths())
+	backupPaths, err := s.backupPaths()
+	if err != nil {
+		return
+	}
+	cmd := exec.Command(archiveDirBin, url, backupPaths)
 	cmd.Dir = s.workingPath()
 
 	err = execWithOutput(cmd, os.Stdout, os.Stderr)
@@ -371,15 +375,15 @@ func restoreDir(source string, dest string) error {
 	return execWithOutput(cmd, os.Stdout, os.Stderr)
 }
 
-func (s *Server) backupPaths() string {
+func (s *Server) backupPaths() (string, error) {
 	cmd := exec.Command(filepath.Join(s.funpackPath(), "bin", "backup"))
 	cmd.Dir = s.workingPath()
 
 	paths, err := cmd.Output()
 	if err != nil {
-		panic(err)
+		return "", err
 	}
-	return strings.TrimSpace(string(paths))
+	return strings.TrimSpace(string(paths)), nil
 }
 
 func (s *Server) funpackPath() string {

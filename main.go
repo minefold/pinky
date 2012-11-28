@@ -135,7 +135,10 @@ func startServer(serverId string, funpack string, snapshotId string, worldUrl st
 			funpack,
 			ram,
 			settings)
-		pid := server.StartServerProcess(pidFile)
+		pid, err := server.StartServerProcess(pidFile)
+		if err != nil {
+			return err
+		}
 
 		events := server.Monitor()
 		go processServerEvents(serverId, events, false)
@@ -146,7 +149,7 @@ func startServer(serverId string, funpack string, snapshotId string, worldUrl st
 		}
 		serverJson, err := json.Marshal(serverInfo)
 		if err != nil {
-			panic(err)
+			return err
 		}
 		redisClient.Set(
 			fmt.Sprintf("pinky:%s:servers:%s", boxId, serverId),
@@ -378,7 +381,11 @@ func stopServer(serverId string) {
 
 		server := servers[serverId]
 		if server == nil {
-			panic(fmt.Sprintf("no server for %s", serverId))
+			plog.Error(errors.New("Server not found"), map[string]interface{}{
+				"event":    "stop_server",
+				"serverId": serverId,
+			})
+			return
 		}
 		server.Stop()
 	} else {
@@ -392,7 +399,11 @@ func stopServer(serverId string) {
 func broadcast(serverId string, message string) {
 	server := servers[serverId]
 	if server == nil {
-		panic(fmt.Sprintf("no server for %s", serverId))
+		plog.Error(errors.New("Server not found"), map[string]interface{}{
+			"event":    "broadcast",
+			"serverId": serverId,
+		})
+		return
 	}
 	server.Broadcast(message)
 }
@@ -400,7 +411,11 @@ func broadcast(serverId string, message string) {
 func tell(serverId string, username string, message string) {
 	server := servers[serverId]
 	if server == nil {
-		panic(fmt.Sprintf("no server for %s", serverId))
+		plog.Error(errors.New("Server not found"), map[string]interface{}{
+			"event":    "tell",
+			"serverId": serverId,
+		})
+		return
 	}
 	server.Tell(username, message)
 }
@@ -408,7 +423,11 @@ func tell(serverId string, username string, message string) {
 func listPlayers(serverId string) {
 	server := servers[serverId]
 	if server == nil {
-		panic(fmt.Sprintf("no server for %s", serverId))
+		plog.Error(errors.New("Server not found"), map[string]interface{}{
+			"event":    "list_players",
+			"serverId": serverId,
+		})
+		return
 	}
 	server.ListPlayers()
 }
@@ -428,9 +447,10 @@ func removeServerArtifacts(serverId string) {
 }
 
 func handleRedisError(err error) {
-	// TODO something more sane
 	if err != nil {
-		panic(err)
+		plog.Error(err, map[string]interface{}{
+			"event": "redis_connection_error",
+		})
 	}
 }
 
@@ -527,7 +547,13 @@ func stateTransition(
 			"invalid state! Expected %s was %s (%s)",
 			from, oldValue, serverStateKey)
 		if enforceStartingCondition {
-			panic(msg)
+			plog.Error(errors.New(msg), map[string]interface{}{
+				"event": "state_transition",
+				"from":  from,
+				"to":    to,
+			})
+			return false
+
 		} else {
 			return false
 		}
