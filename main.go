@@ -57,7 +57,7 @@ type PinkyServerEvent struct {
 
 	// these fields for the player events
 	Username  string `json:"username"`
-	Usernames string `json:"url"`
+	Usernames string `json:"usernames"`
 
 	// these fields for the settings_changed events
 	Actor string `json:"actor"`
@@ -236,14 +236,6 @@ func processServerEvents(serverId string, events chan ServerEvent, attached bool
 
 	var wip chan bool
 	for event := range events {
-		plog.Info(map[string]interface{}{
-			"ts":          event.Ts,
-			"event":       "server_event",
-			"serverId":    serverId,
-			"serverEvent": event.Event,
-			"serverMsg":   event.Msg,
-		})
-
 		switch event.Event {
 		case "started":
 			transitionStartingToUp(serverId)
@@ -455,6 +447,21 @@ func handleRedisError(err error) {
 }
 
 func pushServerEvent(event PinkyServerEvent) {
+	plog.Info(map[string]interface{}{
+		"ts":          event.Ts,
+		"event":       "server_event",
+		"serverId":    event.ServerId,
+		"serverEvent": event.Type,
+		"msg":         event.Msg,
+		"snapshotId":  event.SnapshotId,
+		"url":         event.Url,
+		"username":    event.Username,
+		"usernames":   event.Usernames,
+		"actor":       event.Actor,
+		"key":         event.Key,
+		"value":       event.Value,
+	})
+
 	pseJson, _ := json.Marshal(event)
 	redisClient.Lpush("server:events", pseJson)
 }
