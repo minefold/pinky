@@ -609,7 +609,7 @@ func processJobs(jobChannel chan Job) {
 	for {
 		job := <-jobChannel
 
-		if string(getState()) == "down" {
+		if job.Name != "stop" && string(getState()) == "down" {
 			plog.Info(map[string]interface{}{
 				"event":  "job_ignored",
 				"reason": "pinky is down",
