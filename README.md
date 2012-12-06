@@ -137,10 +137,9 @@ $SERVERS/1234/backup    (ditto)
 ## Deployment
 
 * send stop command to pinky
-* box transitions to stopping state which ignores every command
-* waits for internal jobs to finish (chris can use semaphores, we will use fancy GO things)
+* pinky stops popping jobs so they queue up
+* waits for running jobs to finish
 * exit
-
 * (upstart restarts the process)
 
 ## Redis
@@ -164,9 +163,10 @@ $SERVERS/1234/backup    (ditto)
 
 ## TODO
 
+push start failures onto queue
+change periodic backups to regular jobs so they queue up
+on stop, stop processing server events
 log application crashes with bugsnag
-push job accept status (accepted|ignored)
-push job complete status (succeeded|failed)
 recover backups not working (s3 down?)
 
 ¯\_(ツ)_/¯

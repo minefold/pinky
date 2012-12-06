@@ -69,12 +69,12 @@ func printLogMessageHuman(data map[string]interface{}) {
 	for k, v := range data {
 		if k != "ts" && k != "level" && k != "event" {
 
-			if s := fmt.Sprintf("%v", v); s != "" {
+			if s := fmt.Sprintf("%v", v); s != "" && s != "[]" {
 				if strings.Contains(s, " ") {
 					s = strconv.Quote(s)
 				}
 
-				attrs = append(attrs, fmt.Sprintf("%s=%v", k, v))
+				attrs = append(attrs, fmt.Sprintf("%s=%v", k, s))
 			}
 		}
 	}

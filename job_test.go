@@ -2,7 +2,9 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
+	"time"
 )
 
 var data = []byte(`{
@@ -44,4 +46,41 @@ func TestServerJson(t *testing.T) {
 	if string(serverJson) != expected {
 		t.Error("expected", expected, "was", string(serverJson))
 	}
+}
+
+func TestJobPopper(t *testing.T) {
+	client := NewRedisConnection()
+	defer client.Quit()
+	client.Del("test:in")
+
+	queue := NewJobPopper("test:in")
+
+	jobs := make([]Job, 0)
+
+	go func() {
+		for job := range queue.C {
+			jobs = append(jobs, job)
+		}
+		fmt.Println("should be 1 & 2:", jobs)
+	}()
+
+	client.Lpush("test:in", `{"name":"test","msg":"1"}`)
+	client.Lpush("test:in", `{"name":"test","msg":"2"}`)
+
+	time.Sleep(1 * time.Second)
+
+	queue.Stop()
+
+	time.Sleep(5 * time.Second)
+
+	client.Lpush("test:in", `{"name":"test","msg":"3"}`)
+	jobs = make([]Job, 0)
+	go func() {
+		for job := range queue.C {
+			jobs = append(jobs, job)
+		}
+		fmt.Println("should be empty:", jobs)
+	}()
+
+	time.Sleep(5 * time.Second)
 }

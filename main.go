@@ -17,23 +17,6 @@ import (
 	"time"
 )
 
-// (start|stop|broadcast|tell|multi)
-type Job struct {
-	Name       string
-	ServerId   string
-	Funpack    string
-	Ram        RamAllocation
-	SnapshotId string
-	WorldUrl   string
-	Settings   interface{}
-
-	// for broadcast
-	Msg string
-
-	// for tell
-	Username string
-}
-
 type RamAllocation struct {
 	Min int `json:"min"`
 	Max int `json:"max"`
@@ -72,25 +55,6 @@ var serverRoot string
 var wipGen *WipGenerator
 var portPool chan int
 var plog *Logger // pinky logger
-
-func popRedisQueue(c chan Job, queue string) {
-	client := NewRedisConnection()
-	for {
-		reply, e := client.Brpop([]string{queue}, 2)
-		if e != nil {
-			if !strings.Contains(e.Error(), "timeout expired") {
-				fmt.Println("redis error: %T", e)
-			}
-		} else {
-			val := reply.BytesArray()[1]
-
-			var job Job
-			json.Unmarshal(val, &job)
-
-			c <- job
-		}
-	}
-}
 
 func serverPath(serverId string) string {
 	return filepath.Join(serverRoot, serverId)
@@ -608,10 +572,8 @@ func setStateTo(state string) {
 }
 
 func processJobs(jobChannel chan Job) {
-	for {
-		job := <-jobChannel
-
-		if job.Name != "stop" && string(getState()) == "down" {
+	for job := range jobChannel {
+		if string(getState()) == "down" {
 			plog.Info(map[string]interface{}{
 				"event":  "job_ignored",
 				"reason": "pinky is down",
@@ -810,9 +772,8 @@ func main() {
 	// allocate 200 ports starting at 10000 with a 100 port gap
 	portPool = NewIntPool(10000, 200, 100, portsInUse())
 
-	jobChannel := make(chan Job)
 	boxQueueKey := fmt.Sprintf("pinky:%s:in", boxId)
-	go popRedisQueue(jobChannel, boxQueueKey)
+	jobPopper := NewJobPopper(boxQueueKey)
 
 	// start heartbeat
 	go heartbeat(serverRoot)
@@ -825,7 +786,7 @@ func main() {
 		"servers": serverRoot,
 	})
 
-	go processJobs(jobChannel)
+	go processJobs(jobPopper.C)
 
 	// trap signals
 	sig := make(chan os.Signal, 1)
@@ -838,7 +799,8 @@ func main() {
 		"signal": signal,
 	})
 
-	setStateTo("down")
+	// stop popping jobs
+	jobPopper.Stop()
 
 	waitForNoWorkInProgress()
 }
