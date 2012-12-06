@@ -47,3 +47,10 @@ execute "apt-get update" do
 end
 
 package 'oracle-java7-installer'
+
+execute "create build path" do
+  command %Q{
+    mkdir -p /opt/funpacks
+    chown vagrant /opt/funpacks
+  }
+end

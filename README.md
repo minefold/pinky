@@ -165,11 +165,11 @@ $SERVERS/1234/backup    (ditto)
 ## TODO
 
 log application crashes with bugsnag
-support BROADCAST job
-support TELL job
 push job accept status (accepted|ignored)
 push job complete status (succeeded|failed)
-support TCP/UDP port ranges
 recover backups not working (s3 down?)
 
 ¯\_(ツ)_/¯
+
+ps -eF | grep [j]ava | awk '{print $2}' | sudo xargs pwdx
+ps -eF | grep [j]ava | awk '{print $2}' | sudo xargs pwdx | grep 50bd4bb4105d670e01000001 | cut -d: -f1 | xargs sudo kill

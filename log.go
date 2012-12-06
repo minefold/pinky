@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -67,7 +68,12 @@ func printLogMessageHuman(data map[string]interface{}) {
 
 	for k, v := range data {
 		if k != "ts" && k != "level" && k != "event" {
-			if fmt.Sprintf("%v", v) != "" {
+
+			if s := fmt.Sprintf("%v", v); s != "" {
+				if strings.Contains(s, " ") {
+					s = strconv.Quote(s)
+				}
+
 				attrs = append(attrs, fmt.Sprintf("%s=%v", k, v))
 			}
 		}

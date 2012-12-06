@@ -56,8 +56,8 @@ type PinkyServerEvent struct {
 	Url        string `json:"url"`
 
 	// these fields for the player events
-	Username  string `json:"username"`
-	Usernames string `json:"usernames"`
+	Username  string   `json:"username"`
+	Usernames []string `json:"usernames"`
 
 	// these fields for the settings_changed events
 	Actor string `json:"actor"`
@@ -131,6 +131,7 @@ func startServer(serverId string, funpack string, snapshotId string, worldUrl st
 			}
 		}
 		server.DownloadFunpack(funpack)
+		server.Compile("/opt/funpacks/steam", "/opt/funpacks/cache")
 		server.WriteSettingsFile(
 			funpack,
 			ram,
@@ -161,6 +162,12 @@ func startServer(serverId string, funpack string, snapshotId string, worldUrl st
 			"reason": "already started",
 			"server": serverId,
 		})
+		pushServerEvent(PinkyServerEvent{
+			PinkyId:  boxId,
+			ServerId: serverId,
+			Ts:       time.Now(),
+			Type:     "started",
+		})
 	}
 	return nil
 }
@@ -172,6 +179,8 @@ func runBackups(stop chan bool, serverId string) {
 		select {
 		case <-ticker.C:
 			wip := <-wipGen.C
+			defer close(wip)
+
 			plog.Info(map[string]interface{}{
 				"event":    "periodic_backup_starting",
 				"serverId": serverId,
@@ -188,8 +197,6 @@ func runBackups(stop chan bool, serverId string) {
 				"event":    "periodic_backup_completed",
 				"serverId": serverId,
 			})
-
-			wip <- true
 
 		case <-stop:
 			ticker.Stop()
@@ -367,22 +374,17 @@ func backupServer(serverId string, backupTime time.Time) (err error) {
 }
 
 func stopServer(serverId string) {
-	if attemptStoppingTransition(serverId) {
+	attemptStoppingTransition(serverId)
+	server, ok := servers[serverId]
+	if ok {
 		wip := <-wipGen.C
 		defer close(wip)
 
-		server := servers[serverId]
-		if server == nil {
-			plog.Error(errors.New("Server not found"), map[string]interface{}{
-				"event":    "stop_server",
-				"serverId": serverId,
-			})
-			return
-		}
 		server.Stop()
 	} else {
 		plog.Info(map[string]interface{}{
-			"event":    "stop request ignored",
+			"event":    "stop_request_ignored",
+			"reason":   "server not found",
 			"serverId": serverId,
 		})
 	}
@@ -623,6 +625,7 @@ func processJobs(jobChannel chan Job) {
 		case "start":
 			go func() {
 				wip := <-wipGen.C
+				defer close(wip)
 				startServer(
 					job.ServerId,
 					job.Funpack,
@@ -630,7 +633,6 @@ func processJobs(jobChannel chan Job) {
 					job.WorldUrl,
 					job.Ram,
 					job.Settings)
-				close(wip)
 			}()
 
 		case "stop":

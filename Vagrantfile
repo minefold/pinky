@@ -19,25 +19,5 @@ Vagrant::Config.run do |config|
     chef.add_recipe "golang"
     # chef.add_recipe "java"
   end
-
-  # share TF2 funpack
-  config.vm.share_folder "team-fortress-2.funpack",
-    "~/funpacks/team-fortress-2.funpack",
-    "../funpacks/team-fortress-2.funpack/build"
-
-  # share minecraft-vanilla funpack
-  config.vm.share_folder "minecraft-vanilla",
-    "~/funpacks/minecraft-vanilla",
-    "../funpacks/minecraft-vanilla"
-
-  # share minecraft-essentials funpack
-  config.vm.share_folder "minecraft-essentials",
-    "~/funpacks/minecraft-essentials",
-    "../funpacks/minecraft-essentials"
-
-  # share dummy funpack
-  config.vm.share_folder "dummy.funpack",
-    "~/funpacks/dummy.funpack",
-    "../funpacks/dummy.funpack"
   
 end

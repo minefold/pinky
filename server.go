@@ -32,7 +32,7 @@ type ServerEvent struct {
 
 	// these fields for the player events
 	Username  string
-	Usernames string
+	Usernames []string
 
 	// these fields for the settings_changed events
 	Actor string
@@ -357,6 +357,15 @@ func (s *Server) BackupWorld(backupTime time.Time) (url string, err error) {
 	return
 }
 
+func (s *Server) Compile(buildPath, cachePath string) (err error) {
+	if fileExists(s.compilePath()) {
+		cmd := exec.Command(s.compilePath(), buildPath, cachePath)
+		err = execWithOutput(cmd, os.Stdout, os.Stderr)
+	}
+
+	return
+}
+
 func restoreDir(source string, dest string) error {
 	var cmd *exec.Cmd
 
@@ -392,4 +401,8 @@ func (s *Server) funpackPath() string {
 
 func (s *Server) workingPath() string {
 	return filepath.Join(s.Path, "working")
+}
+
+func (s *Server) compilePath() string {
+	return filepath.Join(s.funpackPath(), "bin", "compile")
 }
