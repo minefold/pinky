@@ -390,6 +390,18 @@ func listPlayers(serverId string) {
 	server.ListPlayers()
 }
 
+func kickPlayer(serverId string, username string, message string) {
+	server := servers[serverId]
+	if server == nil {
+		plog.Error(errors.New("Server not found"), map[string]interface{}{
+			"event":    "kick",
+			"serverId": serverId,
+		})
+		return
+	}
+	server.Kick(username, message)
+}
+
 func removeServerArtifacts(serverId string) {
 	exec.Command("rm", "-f", pidFile(serverId)).Run()
 	exec.Command("rm", "-rf", serverPath(serverId)).Run()
@@ -608,6 +620,9 @@ func processJobs(jobChannel chan Job) {
 
 		case "list":
 			go listPlayers(job.ServerId)
+
+		case "kick":
+			go kickPlayer(job.ServerId, job.Username, job.Msg)
 
 		default:
 			plog.Info(map[string]interface{}{

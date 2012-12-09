@@ -29,6 +29,11 @@ func heartbeat(serverRoot string) {
 }
 
 func heartbeatJson(serverRoot string) ([]byte, error) {
+	if err := recover(); err != nil {
+		// TODO bugsnag
+		fmt.Println("HEARTBEAT ERROR", err)
+	}
+
 	vmStat, err := GetVmStat()
 	if err != nil {
 		return nil, err

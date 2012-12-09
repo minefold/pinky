@@ -189,6 +189,10 @@ func (s *Server) Tell(username, message string) {
 	s.Writeln("tell " + username + " " + message)
 }
 
+func (s *Server) Kick(username, message string) {
+	s.Writeln("kick " + username + " " + message)
+}
+
 func (s *Server) ListPlayers() {
 	s.Writeln("list")
 }

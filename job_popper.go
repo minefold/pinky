@@ -17,7 +17,7 @@ type Job struct {
 	// for broadcast
 	Msg string
 
-	// for tell
+	// for tell & kick
 	Username string
 }
 
