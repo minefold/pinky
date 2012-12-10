@@ -76,12 +76,13 @@ func startServer(serverId string, funpack string, snapshotId string, worldUrl st
 			Log: NewLog(map[string]interface{}{
 				"serverId": serverId,
 			}),
+			State: "starting",
 		}
 
 		servers[server.Id] = server
 
 		plog.Info(map[string]interface{}{
-			"event":    "world_starting",
+			"event":    "server_starting",
 			"serverId": serverId,
 		})
 
@@ -100,12 +101,18 @@ func startServer(serverId string, funpack string, snapshotId string, worldUrl st
 			funpack,
 			ram,
 			settings)
+
 		pid, err := server.StartServerProcess(pidFile)
+		if err != nil {
+			fmt.Println(err)
+			return err
+		}
+
+		events, err := server.Monitor()
 		if err != nil {
 			return err
 		}
 
-		events := server.Monitor()
 		go processServerEvents(serverId, events, false)
 
 		serverInfo := RedisServerInfo{
@@ -205,16 +212,19 @@ func processServerEvents(serverId string, events chan ServerEvent, attached bool
 		startTicking(serverId, stopTicks)
 	}
 
-	var wip chan bool
+	var stopWip chan bool
+
 	for event := range events {
 		switch event.Event {
 		case "started":
-			transitionStartingToUp(serverId)
+			servers[serverId].State = "up"
 			startTicking(serverId, stopTicks)
 		case "stopping":
-			if attemptStoppingTransition(serverId) {
-				wip = <-wipGen.C
+			if servers[serverId].State != "stopping" {
+				servers[serverId].State = "stopping"
+				stopWip = <-wipGen.C
 			}
+
 		case "fatal_error":
 			servers[serverId].Kill()
 		}
@@ -238,17 +248,15 @@ func processServerEvents(serverId string, events chan ServerEvent, attached bool
 		"serverId": serverId,
 	})
 
-	if wip == nil {
-		wip = <-wipGen.C
+	if stopWip == nil {
+		stopWip = <-wipGen.C
 	}
-	defer close(wip)
+	defer close(stopWip)
 
 	stopTicks <- true
 	stopBackups <- true
 
-	state, _ := redisClient.Get(stateKey(serverId))
-
-	if hasWorld && string(state) != "starting" {
+	if hasWorld && servers[serverId].State != "starting" {
 		plog.Info(map[string]interface{}{
 			"event":    "shutdown_backup_starting",
 			"serverId": serverId,
@@ -267,7 +275,6 @@ func processServerEvents(serverId string, events chan ServerEvent, attached bool
 		})
 	}
 
-	transitionToStopped(serverId)
 	removeServerArtifacts(serverId)
 	portPool <- servers[serverId].Port
 	delete(servers, serverId)
@@ -338,7 +345,6 @@ func backupServer(serverId string, backupTime time.Time) (err error) {
 }
 
 func stopServer(serverId string) {
-	attemptStoppingTransition(serverId)
 	server, ok := servers[serverId]
 	if ok {
 		wip := <-wipGen.C
@@ -350,6 +356,12 @@ func stopServer(serverId string) {
 			"event":    "stop_request_ignored",
 			"reason":   "server not found",
 			"serverId": serverId,
+		})
+		pushServerEvent(PinkyServerEvent{
+			PinkyId:  boxId,
+			ServerId: serverId,
+			Ts:       time.Now(),
+			Type:     "stopped",
 		})
 	}
 }
@@ -408,12 +420,6 @@ func removeServerArtifacts(serverId string) {
 
 	redisClient.Del(
 		fmt.Sprintf("pinky:%s:servers:%s", boxId, serverId))
-	redisClient.Del(
-		fmt.Sprintf("server:%s:state", serverId))
-	redisClient.Del(
-		fmt.Sprintf("server:%s:slots", serverId))
-	redisClient.Del(
-		fmt.Sprintf("server:%s:players", serverId))
 }
 
 func handleRedisError(err error) {
@@ -442,10 +448,6 @@ func pushServerEvent(event PinkyServerEvent) {
 
 	pseJson, _ := json.Marshal(event)
 	redisClient.Lpush("server:events", pseJson)
-}
-
-func stateKey(serverId string) string {
-	return fmt.Sprintf("server:%s:state", serverId)
 }
 
 func pinkyServerKey(serverId string) string {
@@ -517,62 +519,6 @@ func redisSet(key string, value []byte) {
 	return
 }
 
-func stateTransition(
-	serverId string,
-	from string,
-	to string,
-	enforceStartingCondition bool) bool {
-
-	// TODO race condition?
-	serverStateKey := stateKey(serverId)
-	oldValue := string(redisGet(serverStateKey))
-
-	if oldValue != from {
-		msg := fmt.Sprintf(
-			"invalid state! Expected %s was %s (%s)",
-			from, oldValue, serverStateKey)
-		if enforceStartingCondition {
-			plog.Error(errors.New(msg), map[string]interface{}{
-				"event": "state_transition",
-				"from":  from,
-				"to":    to,
-			})
-			return false
-
-		} else {
-			return false
-		}
-	}
-
-	if to != "" {
-		redisSet(serverStateKey, []byte(to))
-	} else {
-		redisDel(serverStateKey)
-	}
-
-	return true
-}
-
-func attemptStartingTransition(serverId string) bool {
-	return stateTransition(serverId, "", "starting", false)
-}
-
-func attemptStoppingTransition(serverId string) bool {
-	return stateTransition(serverId, "up", "stopping", false)
-}
-
-func transitionStartingToUp(serverId string) {
-	stateTransition(serverId, "starting", "up", true)
-}
-
-func transitionUpToStopping(serverId string) {
-	stateTransition(serverId, "up", "stopping", true)
-}
-
-func transitionToStopped(serverId string) {
-	stateTransition(serverId, "stopping", "", false)
-}
-
 func getState() []byte {
 	key := fmt.Sprintf("pinky:%s:state", boxId)
 	return redisGet(key)
@@ -600,13 +546,26 @@ func processJobs(jobChannel chan Job) {
 			go func() {
 				wip := <-wipGen.C
 				defer close(wip)
-				startServer(
+				err := startServer(
 					job.ServerId,
 					job.Funpack,
 					job.SnapshotId,
 					job.WorldUrl,
 					job.Ram,
 					job.Settings)
+
+				if err != nil {
+					plog.Error(err, map[string]interface{}{
+						"event": "server_start_error",
+					})
+					pushServerEvent(PinkyServerEvent{
+						PinkyId:  boxId,
+						ServerId: job.ServerId,
+						Ts:       time.Now(),
+						Type:     "stopped",
+					})
+				}
+
 			}()
 
 		case "stop":
@@ -698,7 +657,10 @@ func discoverRunningServers() {
 				pid,
 				serverInfo.Port)
 
-			events := servers[serverId].Monitor()
+			events, err := servers[serverId].Monitor()
+			if err != nil {
+				return
+			}
 			go processServerEvents(serverId, events, true)
 
 		} else {
@@ -725,7 +687,12 @@ func cleanOldServers() error {
 				"event":    "dead_server_removed",
 				"serverId": serverId,
 			})
-
+			pushServerEvent(PinkyServerEvent{
+				PinkyId:  boxId,
+				ServerId: serverId,
+				Ts:       time.Now(),
+				Type:     "stopped",
+			})
 		}
 	}
 	return nil

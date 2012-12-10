@@ -23,6 +23,7 @@ type Server struct {
 	HasWorld bool
 	Proc     *ManagedProcess
 	Log      *Logger
+	State    string
 }
 
 type ServerEvent struct {
@@ -104,25 +105,35 @@ func (s *Server) processStdout(c chan ServerEvent) {
 }
 
 func fileExists(path string) bool {
-	f, err := os.Open(path)
-	if err == nil {
-		f.Close()
-		return true
+	if _, err := os.Stat(path); err != nil {
+		return false
 	}
-	return false
+	return true
 }
 
-func waitForExist(path string) {
-	t := time.NewTicker(100 * time.Millisecond)
-	for _ = range t.C {
-		if fileExists(path) {
-			return
+func waitForExist(path string, wait time.Duration) error {
+	ticker := time.NewTicker(1000 * time.Millisecond)
+	timeout := time.NewTimer(wait)
+
+	for {
+		select {
+		case <-timeout.C:
+			return errors.New("timeout")
+
+		case <-ticker.C:
+			if fileExists(path) {
+				return nil
+			}
 		}
 	}
+
+	return nil
 }
 
-func (s *Server) Monitor() chan ServerEvent {
-	waitForExist(s.stdoutPath())
+func (s *Server) Monitor() (chan ServerEvent, error) {
+	if err := waitForExist(s.stdoutPath(), 15*time.Second); err != nil {
+		return nil, err
+	}
 
 	// we have two channels, where we copy incoming events to outgoing events
 	// but on the stop event we intercept so we can make sure the server
@@ -145,7 +156,7 @@ func (s *Server) Monitor() chan ServerEvent {
 		close(eventsOut)
 	}()
 
-	return eventsOut
+	return eventsOut, nil
 }
 
 func (s *Server) ensureServerStopped() {

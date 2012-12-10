@@ -3,6 +3,8 @@
 require 'optparse'
 require 'posix/spawn'
 
+Process.daemon(true)
+
 module Process
   def self.alive?(pid)
     begin
@@ -95,6 +97,8 @@ class IOBufferOut < IOBuffer
   end
 end
 
+# detach from parent
+# Process.daemon
 
 pipe_directory = working_directory = Process.child('pwd').out.strip
 pid_file = nil

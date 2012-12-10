@@ -3,7 +3,7 @@ Vagrant::Config.run do |config|
 
   config.vm.network :hostonly, "10.10.10.15"
 
-  config.vm.customize ["modifyvm", :id, "--memory", 2048]
+  config.vm.customize ["modifyvm", :id, "--memory", 1024 * 5]
   
   [20000, 27015, 28015].each do |port|
     config.vm.forward_port port, port
