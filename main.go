@@ -149,31 +149,35 @@ func runBackups(stop chan bool, serverId string) {
 	for {
 		select {
 		case <-ticker.C:
-			wip := <-wipGen.C
-			defer close(wip)
-
-			plog.Info(map[string]interface{}{
-				"event":    "periodic_backup_starting",
-				"serverId": serverId,
-			})
-
-			err := backupServer(serverId, time.Now())
-			if err != nil {
-				// TODO figure out some recovery scenario
-				plog.Error(err, map[string]interface{}{
-					"event": "backup_failed",
-				})
-			}
-			plog.Info(map[string]interface{}{
-				"event":    "periodic_backup_completed",
-				"serverId": serverId,
-			})
+			runBackup(serverId)
 
 		case <-stop:
 			ticker.Stop()
 			return
 		}
 	}
+}
+
+func runBackup(serverId string) {
+	wip := <-wipGen.C
+	defer close(wip)
+
+	plog.Info(map[string]interface{}{
+		"event":    "periodic_backup_starting",
+		"serverId": serverId,
+	})
+
+	err := backupServer(serverId, time.Now())
+	if err != nil {
+		// TODO figure out some recovery scenario
+		plog.Error(err, map[string]interface{}{
+			"event": "backup_failed",
+		})
+	}
+	plog.Info(map[string]interface{}{
+		"event":    "periodic_backup_completed",
+		"serverId": serverId,
+	})
 }
 
 func startTicking(serverId string, stop chan bool) {
@@ -762,10 +766,15 @@ func main() {
 
 	setStateTo("up")
 
+	var fdLimit syscall.Rlimit
+	syscall.Getrlimit(syscall.RLIMIT_NOFILE, &fdLimit)
+
 	plog.Out("info", map[string]interface{}{
-		"event":   "pinky_up",
-		"queue":   boxQueueKey,
-		"servers": serverRoot,
+		"event":      "pinky_up",
+		"queue":      boxQueueKey,
+		"servers":    serverRoot,
+		"fd_current": fdLimit.Cur,
+		"fd_max":     fdLimit.Max,
 	})
 
 	go processJobs(jobPopper.C)
