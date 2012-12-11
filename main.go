@@ -149,7 +149,7 @@ func runBackups(stop chan bool, serverId string) {
 	for {
 		select {
 		case <-ticker.C:
-			runBackup(serverId)
+			runPeriodicBackup(serverId)
 
 		case <-stop:
 			ticker.Stop()
@@ -158,10 +158,7 @@ func runBackups(stop chan bool, serverId string) {
 	}
 }
 
-func runBackup(serverId string) {
-	wip := <-wipGen.C
-	defer close(wip)
-
+func runPeriodicBackup(serverId string) {
 	plog.Info(map[string]interface{}{
 		"event":    "periodic_backup_starting",
 		"serverId": serverId,
