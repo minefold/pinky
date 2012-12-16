@@ -32,10 +32,21 @@ func NewWipGenerator() *WipGenerator {
 			workInProgress[id] = id
 			w.Count = len(workInProgress)
 
+			plog.Info(map[string]interface{}{
+				"event": "started_wip",
+				"id":    id,
+				"count": w.Count,
+			})
+
 			go func() {
 				<-finished
 				delete(workInProgress, id)
 				w.Count = len(workInProgress)
+				plog.Info(map[string]interface{}{
+					"event": "finished_wip",
+					"id":    id,
+					"count": w.Count,
+				})
 			}()
 		}
 	}()

@@ -532,11 +532,27 @@ func setStateTo(state string) {
 
 func processJobs(jobChannel chan Job) {
 	for job := range jobChannel {
-		if string(getState()) == "down" {
+		pinkyState := string(getState())
+		if pinkyState == "down" {
 			plog.Info(map[string]interface{}{
 				"event":  "job_ignored",
 				"reason": "pinky is down",
 				"job":    job,
+			})
+			continue
+		}
+
+		if pinkyState == "stopping" && job.Name == "start" {
+			plog.Info(map[string]interface{}{
+				"event":  "start_job_ignored",
+				"reason": "pinky is stopping",
+				"job":    job,
+			})
+			pushServerEvent(PinkyServerEvent{
+				PinkyId:  boxId,
+				ServerId: job.ServerId,
+				Ts:       time.Now(),
+				Type:     "stopped",
 			})
 			continue
 		}

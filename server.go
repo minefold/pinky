@@ -384,7 +384,7 @@ func (s *Server) Compile(buildPath, cachePath string) (err error) {
 func restoreDir(source string, dest string) error {
 	var cmd *exec.Cmd
 
-	if strings.Contains(source, "https://") {
+	if strings.Contains(source, "http") {
 		restoreDirBin, _ := filepath.Abs("bin/restore-dir")
 
 		cmd = exec.Command(restoreDirBin, source)
