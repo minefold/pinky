@@ -363,8 +363,8 @@ func (s *Server) DownloadFunpack(funpackUrl string) error {
 		output, err := cmd.Output()
 		if err != nil {
 			plog.Error(err, map[string]interface{}{
-				"event":  "funpack_import_failed",
-				"output": output,
+				"event":  "bundle_install_failed",
+				"output": string(output),
 			})
 			return err
 		}
@@ -454,7 +454,7 @@ func (s *Server) backupPaths() ([]string, error) {
 	if err != nil {
 		plog.Error(err, map[string]interface{}{
 			"event":  "funpack_import_failed",
-			"output": info,
+			"output": string(info),
 		})
 		return []string{}, err
 	}
