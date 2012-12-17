@@ -604,6 +604,7 @@ func processJobs(jobChannel chan Job) {
 					job.Settings)
 
 				if err != nil {
+					delete(servers, job.ServerId)
 					plog.Error(err, map[string]interface{}{
 						"event": "server_start_error",
 					})
