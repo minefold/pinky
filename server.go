@@ -358,7 +358,7 @@ func (s *Server) DownloadFunpack(funpackUrl string) error {
 	})
 
 	if fileExists(s.funpackPath("Gemfile")) {
-		cmd := exec.Command("bundle", "install")
+		cmd := exec.Command("bundle", "install", "--deployment")
 		cmd.Dir = s.funpackPath()
 		output, err := cmd.Output()
 		if err != nil {

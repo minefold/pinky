@@ -95,8 +95,15 @@ func startServer(serverId string, funpack string, snapshotId string, worldUrl st
 				return err
 			}
 		}
-		server.DownloadFunpack(funpack)
-		server.Compile("/opt/funpacks/steam", "/opt/funpacks/cache")
+		err := server.DownloadFunpack(funpack)
+		if err != nil {
+			return err
+		}
+		err = server.Compile("/opt/funpacks/steam", "/opt/funpacks/cache")
+		if err != nil {
+			return err
+		}
+
 		server.WriteSettingsFile(
 			funpack,
 			ram,
