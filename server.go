@@ -368,6 +368,14 @@ func (s *Server) DownloadFunpack(funpackUrl string) error {
 			})
 			return err
 		}
+
+		// Test the import script now. If it fails later we'll fail to
+		// backup the world
+		_, err = s.backupPaths()
+		if err != nil {
+			return err
+		}
+
 	}
 	return nil
 }

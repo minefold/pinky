@@ -325,7 +325,7 @@ func backupServer(serverId string, backupTime time.Time) (err error) {
 	}
 
 	var url string
-	err = retry(10, 5*time.Second, func(retries int) error {
+	err = retry(1000, 5*time.Second, func(retries int) error {
 		var err error
 		url, err = server.BackupWorld(backupTime)
 		if err != nil {
@@ -342,7 +342,7 @@ func backupServer(serverId string, backupTime time.Time) (err error) {
 	}
 
 	var snapshotId bson.ObjectId
-	err = retry(10, 5*time.Second, func(retries int) error {
+	err = retry(1000, 5*time.Second, func(retries int) error {
 		var err error
 		snapshotId, err = storeBackupInMongo(serverId, url, backupTime)
 		if err != nil {
