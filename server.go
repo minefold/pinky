@@ -49,6 +49,10 @@ type ServerSettings struct {
 	Settings interface{}   `json:"settings"`
 }
 
+type BackupInfo struct {
+	Paths []string `json:"paths"`
+}
+
 func AttachServer(id string, path string, pid int, port int) *Server {
 	s := &Server{Id: id, Path: path, Pid: pid, Port: port}
 	s.Proc = NewManagedProcess(pid)
@@ -148,7 +152,7 @@ func (s *Server) Monitor() (chan ServerEvent, error) {
 		for event := range eventsIn {
 			switch event.Event {
 			case "stopping":
-				go s.ensureServerStopped()
+				go s.EnsureServerStopped()
 			}
 			eventsOut <- event
 		}
@@ -159,26 +163,40 @@ func (s *Server) Monitor() (chan ServerEvent, error) {
 	return eventsOut, nil
 }
 
-func (s *Server) ensureServerStopped() {
-	timeout := time.After(30 * time.Second)
+func (s *Server) EnsureServerStopped() {
+	time.Sleep(30 * time.Second)
+	if !s.Proc.IsRunning() {
+		return
+	}
+
+	time.Sleep(60 * time.Second)
+	if !s.Proc.IsRunning() {
+		return
+	}
+	plog.Info(map[string]interface{}{
+		"event":  "server_exit_timeout",
+		"server": s.Id,
+		"pid":    s.Pid,
+		"action": "TERM",
+	})
+	s.Kill(syscall.SIGTERM)
+
+	time.Sleep(60 * time.Second)
+	if !s.Proc.IsRunning() {
+		return
+	}
 	for {
-		select {
-		case <-timeout:
-			plog.Info(map[string]interface{}{
-				"event": "server_exit_timeout",
-				"pid":   s.Pid,
-			})
-
-			s.Kill()
+		plog.Info(map[string]interface{}{
+			"event":  "server_exit_timeout",
+			"server": s.Id,
+			"pid":    s.Pid,
+			"action": "KILL",
+		})
+		s.Kill(syscall.SIGKILL)
+		if !s.Proc.IsRunning() {
 			return
-
-		default:
-			if !s.Proc.IsRunning() {
-				return
-			}
-
-			time.Sleep(500)
 		}
+		time.Sleep(60 * time.Second)
 	}
 }
 
@@ -189,7 +207,7 @@ func (s *Server) parseEvent(line []byte) (event ServerEvent, err error) {
 
 func (s *Server) Stop() {
 	s.Writeln("stop")
-	s.ensureServerStopped()
+	s.EnsureServerStopped()
 }
 
 func (s *Server) Broadcast(message string) {
@@ -221,8 +239,8 @@ func (s *Server) Writeln(line string) error {
 	return nil
 }
 
-func (s *Server) Kill() {
-	syscall.Kill(-s.Pid, syscall.SIGTERM)
+func (s *Server) Kill(sig syscall.Signal) {
+	syscall.Kill(-s.Pid, sig)
 }
 
 func execWithOutput(cmd *exec.Cmd, outWriter io.Writer, errWriter io.Writer) (err error) {
@@ -299,7 +317,7 @@ func (s *Server) StartServerProcess(pidFile string) (pid int, err error) {
 
 	go execWithOutput(cmd, os.Stdout, os.Stderr)
 
-	err = retry(50, 100*time.Millisecond, func() error {
+	err = retry(50, 100*time.Millisecond, func(retries int) error {
 		var err error
 		_, s.Pid, err = readPidFromFile(pidFile)
 		return err
@@ -328,14 +346,29 @@ func (s *Server) PrepareServerPath() {
 }
 
 func (s *Server) DownloadFunpack(funpackUrl string) error {
-	funpackPath := filepath.Join(s.Path, "funpack")
-	err := restoreDir(funpackUrl, funpackPath)
+	err := restoreDir(funpackUrl, s.funpackPath())
 	if err != nil {
 		return err
 	}
 
-	s.HasWorld = fileExists(
-		filepath.Join(s.funpackPath(), "bin", "backup"))
+	s.HasWorld = fileExists(s.funpackPath("bin", "backup"))
+
+	plog.Info(map[string]interface{}{
+		"event": "Gemfile detected",
+	})
+
+	if fileExists(s.funpackPath("Gemfile")) {
+		cmd := exec.Command("bundle", "install")
+		cmd.Dir = s.funpackPath()
+		output, err := cmd.Output()
+		if err != nil {
+			plog.Error(err, map[string]interface{}{
+				"event":  "funpack_import_failed",
+				"output": output,
+			})
+			return err
+		}
+	}
 	return nil
 }
 
@@ -364,7 +397,13 @@ func (s *Server) BackupWorld(backupTime time.Time) (url string, err error) {
 	if err != nil {
 		return
 	}
-	cmd := exec.Command(archiveDirBin, url, backupPaths)
+
+	args := []string{url}
+	for _, a := range backupPaths {
+		args = append(args, a)
+	}
+
+	cmd := exec.Command(archiveDirBin, args...)
 	cmd.Dir = s.workingPath()
 
 	err = execWithOutput(cmd, os.Stdout, os.Stderr)
@@ -399,19 +438,42 @@ func restoreDir(source string, dest string) error {
 	return execWithOutput(cmd, os.Stdout, os.Stderr)
 }
 
-func (s *Server) backupPaths() (string, error) {
-	cmd := exec.Command(filepath.Join(s.funpackPath(), "bin", "backup"))
+func (s *Server) funpackExec(dir string, script string, args ...string) (output []byte, err error) {
+	scriptPath := s.funpackPath("bin", script)
+
+	cmd := exec.Command("bundle", "exec", scriptPath)
+	cmd.Env = os.Environ()
+	cmd.Env = append(cmd.Env, "BUNDLE_GEMFILE="+s.funpackPath("Gemfile"))
 	cmd.Dir = s.workingPath()
 
-	paths, err := cmd.Output()
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(string(paths)), nil
+	return cmd.Output()
 }
 
-func (s *Server) funpackPath() string {
-	return filepath.Join(s.Path, "funpack")
+func (s *Server) backupPaths() ([]string, error) {
+	info, err := s.funpackExec(s.workingPath(), "import")
+	if err != nil {
+		plog.Error(err, map[string]interface{}{
+			"event":  "funpack_import_failed",
+			"output": info,
+		})
+		return []string{}, err
+	}
+
+	var bi BackupInfo
+	err = json.Unmarshal(info, &bi)
+	if err != nil {
+		return []string{}, err
+	}
+
+	return bi.Paths, nil
+}
+
+func (s *Server) funpackPath(paths ...string) string {
+	args := []string{s.Path, "funpack"}
+	for _, path := range paths {
+		args = append(args, path)
+	}
+	return filepath.Join(args...)
 }
 
 func (s *Server) workingPath() string {
@@ -419,5 +481,5 @@ func (s *Server) workingPath() string {
 }
 
 func (s *Server) compilePath() string {
-	return filepath.Join(s.funpackPath(), "bin", "compile")
+	return s.funpackPath("bin", "compile")
 }

@@ -36,6 +36,6 @@ def run cmd
 end
 
 Tempfile.open(File.basename(REMOTE)) do |f|
-  run "tar #{compression} -cf #{f.path} #{compress_args.join(' ')}"
+  run "tar #{compression} -cf #{f.path} #{compress_args.map{|arg| %Q{"#{arg}"}}.join(' ')}"
   run "#{S3CURL} --put '#{f.path}' -- #{REMOTE} --silent --show-error"
 end

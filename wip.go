@@ -3,6 +3,7 @@ package main
 import (
 	"os/exec"
 	"strings"
+	"time"
 )
 
 // For monitoring Work In Progress
@@ -39,14 +40,28 @@ func NewWipGenerator() *WipGenerator {
 			})
 
 			go func() {
-				<-finished
-				delete(workInProgress, id)
-				w.Count = len(workInProgress)
-				plog.Info(map[string]interface{}{
-					"event": "finished_wip",
-					"id":    id,
-					"count": w.Count,
-				})
+				ticker := time.NewTicker(60 * time.Second)
+				for {
+					select {
+					case <-finished:
+						delete(workInProgress, id)
+						w.Count = len(workInProgress)
+						plog.Info(map[string]interface{}{
+							"event": "finished_wip",
+							"id":    id,
+							"count": w.Count,
+						})
+						return
+
+					case <-ticker.C:
+						plog.Info(map[string]interface{}{
+							"event": "waiting_wip",
+							"id":    id,
+							"count": len(workInProgress),
+						})
+
+					}
+				}
 			}()
 		}
 	}()

@@ -104,7 +104,6 @@ func startServer(serverId string, funpack string, snapshotId string, worldUrl st
 
 		pid, err := server.StartServerProcess(pidFile)
 		if err != nil {
-			fmt.Println(err)
 			return err
 		}
 
@@ -153,6 +152,10 @@ func runBackups(stop chan bool, serverId string) {
 
 		case <-stop:
 			ticker.Stop()
+			plog.Info(map[string]interface{}{
+				"event":    "periodic_backups_stopped",
+				"serverId": serverId,
+			})
 			return
 		}
 	}
@@ -202,8 +205,18 @@ func processServerEvents(serverId string, events chan ServerEvent, attached bool
 	stopTicks := make(chan bool, 1)
 
 	hasWorld := servers[serverId].HasWorld
+
 	if hasWorld {
 		go runBackups(stopBackups, serverId)
+		plog.Info(map[string]interface{}{
+			"event":    "starting_periodic_backups",
+			"serverId": serverId,
+		})
+	} else {
+		plog.Info(map[string]interface{}{
+			"event":    "no_periodic_backups",
+			"serverId": serverId,
+		})
 	}
 
 	if attached {
@@ -227,7 +240,8 @@ func processServerEvents(serverId string, events chan ServerEvent, attached bool
 			}
 
 		case "fatal_error":
-			servers[serverId].Kill()
+			servers[serverId].Kill(syscall.SIGKILL)
+			go servers[serverId].EnsureServerStopped()
 		}
 
 		pushServerEvent(PinkyServerEvent{
@@ -304,13 +318,14 @@ func backupServer(serverId string, backupTime time.Time) (err error) {
 	}
 
 	var url string
-	err = retry(10, 5*time.Second, func() error {
+	err = retry(10, 5*time.Second, func(retries int) error {
 		var err error
 		url, err = server.BackupWorld(backupTime)
 		if err != nil {
 			plog.Error(err, map[string]interface{}{
 				"event":    "world_backup",
 				"serverId": serverId,
+				"retries":  retries,
 			})
 		}
 		return err
@@ -320,13 +335,14 @@ func backupServer(serverId string, backupTime time.Time) (err error) {
 	}
 
 	var snapshotId bson.ObjectId
-	err = retry(10, 5*time.Second, func() error {
+	err = retry(10, 5*time.Second, func(retries int) error {
 		var err error
 		snapshotId, err = storeBackupInMongo(serverId, url, backupTime)
 		if err != nil {
 			plog.Error(err, map[string]interface{}{
 				"event":    "world_db_store",
 				"serverId": serverId,
+				"retries":  retries,
 			})
 
 		}
@@ -459,12 +475,12 @@ func pinkyServersKey() string {
 	return fmt.Sprintf("pinky:%s:servers:*", boxId)
 }
 
-func retry(maxRetries int, delay time.Duration, work func() error) error {
-	err := work()
+func retry(maxRetries int, delay time.Duration, work func(retries int) error) error {
 	retries := 0
+	err := work(retries)
 	for err != nil && retries < maxRetries {
 		time.Sleep(delay)
-		err = work()
+		err = work(retries)
 		retries += 1
 	}
 	return err
@@ -472,13 +488,14 @@ func retry(maxRetries int, delay time.Duration, work func() error) error {
 
 func redisGet(key string) []byte {
 	var result []byte
-	err := retry(50, 100*time.Millisecond, func() error {
+	err := retry(50, 100*time.Millisecond, func(retries int) error {
 		var err error
 		result, err = redisClient.Get(key)
 		if err != nil {
 			plog.Error(err, map[string]interface{}{
-				"event": "redis_get_failed",
-				"key":   key,
+				"event":   "redis_get_failed",
+				"key":     key,
+				"retries": retries,
 			})
 		}
 		return err
@@ -489,13 +506,14 @@ func redisGet(key string) []byte {
 
 func redisDel(key string) int64 {
 	var result int64
-	err := retry(50, 100*time.Millisecond, func() error {
+	err := retry(50, 100*time.Millisecond, func(retries int) error {
 		var err error
 		result, err = redisClient.Del(key)
 		if err != nil {
 			plog.Error(err, map[string]interface{}{
-				"event": "redis_del_failed",
-				"key":   key,
+				"event":   "redis_del_failed",
+				"key":     key,
+				"retries": retries,
 			})
 		}
 		return err
@@ -505,13 +523,14 @@ func redisDel(key string) int64 {
 }
 
 func redisSet(key string, value []byte) {
-	err := retry(50, 100*time.Millisecond, func() error {
+	err := retry(50, 100*time.Millisecond, func(retries int) error {
 		var err error
 		err = redisClient.Set(key, value)
 		if err != nil {
 			plog.Error(err, map[string]interface{}{
-				"event": "redis_set_failed",
-				"key":   key,
+				"event":   "redis_set_failed",
+				"key":     key,
+				"retries": retries,
 			})
 		}
 		return err
@@ -556,6 +575,12 @@ func processJobs(jobChannel chan Job) {
 			})
 			continue
 		}
+
+		plog.Info(map[string]interface{}{
+			"event":  "job_received",
+			"name":   job.Name,
+			"server": job.ServerId,
+		})
 
 		switch job.Name {
 
