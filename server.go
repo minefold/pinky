@@ -59,6 +59,8 @@ func AttachServer(id string, path string, pid int, port int) *Server {
 	s.Log = NewLog(map[string]interface{}{
 		"serverId": id,
 	})
+	s.HasWorld = fileExists(s.funpackPath("bin", "backup"))
+	s.State = "up"
 	return s
 }
 
