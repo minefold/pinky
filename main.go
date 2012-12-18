@@ -211,6 +211,11 @@ func processServerEvents(serverId string, events chan ServerEvent, attached bool
 	stopBackups := make(chan bool, 1)
 	stopTicks := make(chan bool, 1)
 
+	// Not sure why this is happening:
+	if _, ok := servers[serverId]; !ok {
+		return
+	}
+
 	hasWorld := servers[serverId].HasWorld
 
 	if hasWorld {
