@@ -303,8 +303,12 @@ func processServerEvents(serverId string, events chan ServerEvent, attached bool
 	}
 
 	removeServerArtifacts(serverId)
-	portPool <- servers[serverId].Port
-	delete(servers, serverId)
+
+	// Not sure why this is happening:
+	if _, ok := servers[serverId]; ok {
+		portPool <- servers[serverId].Port
+		delete(servers, serverId)
+	}
 
 	pushServerEvent(PinkyServerEvent{
 		PinkyId:  boxId,
