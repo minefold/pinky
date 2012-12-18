@@ -347,7 +347,7 @@ func (s *Server) PrepareServerPath() {
 	}
 }
 
-func (s *Server) DownloadFunpack(funpackUrl string) error {
+func (s *Server) DownloadFunpack(funpackUrl string, testWorld bool) error {
 	err := restoreDir(funpackUrl, s.funpackPath())
 	if err != nil {
 		return err
@@ -371,13 +371,14 @@ func (s *Server) DownloadFunpack(funpackUrl string) error {
 			return err
 		}
 
-		// Test the import script now. If it fails later we'll fail to
-		// backup the world
-		_, err = s.backupPaths()
-		if err != nil {
-			return err
+		if testWorld {
+			// Test the import script now. If it fails later we'll fail to
+			// backup the world
+			_, err = s.backupPaths()
+			if err != nil {
+				return err
+			}
 		}
-
 	}
 	return nil
 }

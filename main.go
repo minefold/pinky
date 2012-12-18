@@ -95,7 +95,7 @@ func startServer(serverId string, funpack string, snapshotId string, worldUrl st
 				return err
 			}
 		}
-		err := server.DownloadFunpack(funpack)
+		err := server.DownloadFunpack(funpack, worldUrl != "")
 		if err != nil {
 			return err
 		}
