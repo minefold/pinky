@@ -707,7 +707,8 @@ func discoverRunningServers() {
 				})
 
 				// TODO recover
-				panic(err)
+				// panic(err)
+				continue
 			}
 
 			servers[serverId] = AttachServer(
