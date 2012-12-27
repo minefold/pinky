@@ -8,7 +8,8 @@ import (
 type Job struct {
 	Name       string
 	ServerId   string
-	Funpack    string
+	FunpackId  string
+	FunpackUrl string
 	Ram        RamAllocation
 	SnapshotId string
 	WorldUrl   string

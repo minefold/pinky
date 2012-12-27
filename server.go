@@ -16,14 +16,15 @@ import (
 )
 
 type Server struct {
-	Id       string
-	Path     string
-	Pid      int
-	Port     int
-	HasWorld bool
-	Proc     *ManagedProcess
-	Log      *Logger
-	State    string
+	Id        string
+	Path      string
+	Pid       int
+	Port      int
+	HasWorld  bool
+	Proc      *ManagedProcess
+	Log       *Logger
+	State     string
+	FunpackId string
 }
 
 type ServerEvent struct {
@@ -42,26 +43,45 @@ type ServerEvent struct {
 }
 
 type ServerSettings struct {
-	Id       string        `json:"id"`
-	Funpack  string        `json:"funpack"`
-	Port     int           `json:"port"`
-	Ram      RamAllocation `json:"ram"`
-	Settings interface{}   `json:"settings"`
+	Id        string        `json:"id"`
+	FunpackId string        `json:"funpackId"`
+	Funpack   string        `json:"funpack"`
+	Port      int           `json:"port"`
+	Ram       RamAllocation `json:"ram"`
+	Settings  interface{}   `json:"settings"`
 }
 
 type BackupInfo struct {
 	Paths []string `json:"paths"`
 }
 
-func AttachServer(id string, path string, pid int, port int) *Server {
+func AttachServer(id, path string, pid, port int) (*Server, error) {
+	settings, err := ReadServerSettings(path)
+	if err != nil {
+		return nil, err
+	}
+
 	s := &Server{Id: id, Path: path, Pid: pid, Port: port}
 	s.Proc = NewManagedProcess(pid)
 	s.Log = NewLog(map[string]interface{}{
 		"serverId": id,
 	})
 	s.HasWorld = fileExists(s.funpackPath("bin", "backup"))
+	s.FunpackId = settings.FunpackId
 	s.State = "up"
-	return s
+	return s, nil
+}
+
+func ReadServerSettings(path string) (*ServerSettings, error) {
+	settingsFile := filepath.Join(path, "server.json")
+	b, err := ioutil.ReadFile(settingsFile)
+	if err != nil {
+		return nil, err
+	}
+
+	var settings *ServerSettings
+	err = json.Unmarshal(b, &settings)
+	return settings, err
 }
 
 func (s *Server) stdoutPath() string {
@@ -273,7 +293,9 @@ func execWithOutput(cmd *exec.Cmd, outWriter io.Writer, errWriter io.Writer) (er
 	return
 }
 
-func (s *Server) WriteSettingsFile(funpack string,
+func (s *Server) WriteSettingsFile(
+	funpackId string,
+	funpackUrl string,
 	ram RamAllocation,
 	settings interface{}) error {
 
@@ -281,7 +303,7 @@ func (s *Server) WriteSettingsFile(funpack string,
 
 	server := ServerSettings{
 		Id:       s.Id,
-		Funpack:  funpack,
+		Funpack:  funpackUrl,
 		Port:     s.Port,
 		Ram:      ram,
 		Settings: settings,
@@ -347,13 +369,14 @@ func (s *Server) PrepareServerPath() {
 	}
 }
 
-func (s *Server) DownloadFunpack(funpackUrl string, testWorld bool) error {
+func (s *Server) DownloadFunpack(funpackId string, funpackUrl string, testWorld bool) error {
 	err := restoreDir(funpackUrl, s.funpackPath())
 	if err != nil {
 		return err
 	}
 
 	s.HasWorld = fileExists(s.funpackPath("bin", "backup"))
+	s.FunpackId = funpackId
 
 	plog.Info(map[string]interface{}{
 		"event": "Gemfile detected",
@@ -497,5 +520,5 @@ func (s *Server) compilePath() string {
 }
 
 func (s *Server) funpackBuildPath() string {
-	return "/usr/local/funpacks/50bec3967aae5797c0000004/build"
+	return filepath.Join(os.Getenv("FUNPACKS_PATH"), s.FunpackId, "build")
 }

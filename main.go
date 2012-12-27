@@ -64,7 +64,7 @@ func pidFile(serverId string) string {
 	return filepath.Join(serverRoot, fmt.Sprintf("%s.pid", serverId))
 }
 
-func startServer(serverId string, funpack string, snapshotId string, worldUrl string, ram RamAllocation, settings interface{}) error {
+func startServer(serverId string, funpackId string, funpackUrl string, snapshotId string, worldUrl string, ram RamAllocation, settings interface{}) error {
 	if _, present := servers[serverId]; !present {
 
 		port := <-portPool
@@ -95,17 +95,14 @@ func startServer(serverId string, funpack string, snapshotId string, worldUrl st
 				return err
 			}
 		}
-		err := server.DownloadFunpack(funpack, worldUrl != "")
-		if err != nil {
-			return err
-		}
-		err = server.Compile("/opt/funpacks/steam", "/opt/funpacks/cache")
+		err := server.DownloadFunpack(funpackId, funpackUrl, worldUrl != "")
 		if err != nil {
 			return err
 		}
 
 		server.WriteSettingsFile(
-			funpack,
+			funpackId,
+			funpackUrl,
 			ram,
 			settings)
 
@@ -606,7 +603,8 @@ func processJobs(jobChannel chan Job) {
 				defer close(wip)
 				err := startServer(
 					job.ServerId,
-					job.Funpack,
+					job.FunpackId,
+					job.FunpackUrl,
 					job.SnapshotId,
 					job.WorldUrl,
 					job.Ram,
@@ -711,16 +709,22 @@ func discoverRunningServers() {
 				continue
 			}
 
-			servers[serverId] = AttachServer(
+			server, err := AttachServer(
 				serverId,
 				serverPath,
 				pid,
 				serverInfo.Port)
-
-			events, err := servers[serverId].Monitor()
 			if err != nil {
-				return
+				panic(err)
+				continue
 			}
+
+			events, err := server.Monitor()
+			if err != nil {
+				panic(err)
+				continue
+			}
+			servers[serverId] = server
 			go processServerEvents(serverId, events, true)
 
 		} else {
