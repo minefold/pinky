@@ -303,19 +303,19 @@ func (s *Server) StartServerProcess(pidFile string) (pid int, err error) {
 	// a working directory like Minecraft does or out of the
 	// funpack/server directory like TF2 does
 	// maybe a check for the existence of a backup script
-	workingDirectory := filepath.Join(s.Path, "working")
-
 	bufferCmd, _ := filepath.Abs("bin/buffer-process")
 
 	plog.Info(map[string]interface{}{
 		"event":      "starting_server",
-		"workingDir": workingDirectory,
+		"workingDir": s.workingPath(),
 		"pidFile":    pidFile,
 		"serverFile": serverFile,
 	})
 
 	cmd := exec.Command(bufferCmd, "-d", s.Path, "-p", pidFile, command, serverFile)
-	cmd.Dir = workingDirectory
+	cmd.Env = os.Environ()
+	cmd.Env = append(cmd.Env, "BUNDLE_GEMFILE="+s.funpackPath("Gemfile"))
+	cmd.Env = append(cmd.Env, "BUILD_DIR="+s.funpackBuildPath())
 
 	go execWithOutput(cmd, os.Stdout, os.Stderr)
 
@@ -384,7 +384,7 @@ func (s *Server) DownloadFunpack(funpackUrl string, testWorld bool) error {
 }
 
 func (s *Server) DownloadWorld(world string) error {
-	return restoreDir(world, filepath.Join(s.Path, "working"))
+	return restoreDir(world, s.workingPath())
 }
 
 func (s *Server) BackupWorld(backupTime time.Time) (url string, err error) {
@@ -449,19 +449,20 @@ func restoreDir(source string, dest string) error {
 	return execWithOutput(cmd, os.Stdout, os.Stderr)
 }
 
-func (s *Server) funpackExec(dir string, script string, args ...string) (output []byte, err error) {
-	scriptPath := s.funpackPath("bin", script)
+func (s *Server) funpackCmd(bin string, args ...string) *exec.Cmd {
+	scriptPath := s.funpackPath("bin", bin)
 
 	cmd := exec.Command("bundle", "exec", scriptPath)
 	cmd.Env = os.Environ()
 	cmd.Env = append(cmd.Env, "BUNDLE_GEMFILE="+s.funpackPath("Gemfile"))
+	cmd.Env = append(cmd.Env, "BUILD_DIR="+s.funpackBuildPath())
 	cmd.Dir = s.workingPath()
 
-	return cmd.Output()
+	return cmd
 }
 
 func (s *Server) backupPaths() ([]string, error) {
-	info, err := s.funpackExec(s.workingPath(), "import")
+	info, err := s.funpackCmd("import").Output()
 	if err != nil {
 		plog.Error(err, map[string]interface{}{
 			"event":  "funpack_import_failed",
@@ -493,4 +494,8 @@ func (s *Server) workingPath() string {
 
 func (s *Server) compilePath() string {
 	return s.funpackPath("bin", "compile")
+}
+
+func (s *Server) funpackBuildPath() string {
+	return "/usr/local/funpacks/50bec3967aae5797c0000004/build"
 }

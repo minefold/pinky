@@ -171,5 +171,10 @@ recover backups not working (s3 down?)
 
 ¯\_(ツ)_/¯
 
+## Handy commands
+
 ps -eF | grep [j]ava | awk '{print $2}' | sudo xargs pwdx
 ps -eF | grep [j]ava | awk '{print $2}' | sudo xargs pwdx | grep 50bd4bb4105d670e01000001 | cut -d: -f1 | xargs sudo kill
+
+sudo lsof
+sudo lsof | awk '{ print $2; }' | uniq -c | sort -rn | head
