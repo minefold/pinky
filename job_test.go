@@ -4,13 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"testing"
-	"time"
+	// "time"
 )
 
 var data = []byte(`{
   "name": "start",
   "serverId": "1234",
-  "funpack": "minecraft-essentials",
+  "funpackId": "minecraft-essentials",
   "ram": {
     "min": 1024,
     "max": 1024
@@ -33,15 +33,15 @@ func TestServerJson(t *testing.T) {
 
 	// settingsJson, _ := job.Settings.MarshalJSON()
 	server := ServerSettings{
-		Id:       job.ServerId,
-		Funpack:  job.Funpack,
-		Port:     4032,
-		Ram:      job.Ram,
-		Settings: job.Settings,
+		Id:        job.ServerId,
+		FunpackId: job.FunpackId,
+		Port:      4032,
+		Ram:       job.Ram,
+		Settings:  job.Settings,
 	}
 	serverJson, _ := json.Marshal(server)
 
-	expected := `{"id":"1234","funpack":"minecraft-essentials","port":4032,"ram":{"min":1024,"max":1024},"settings":{"banned":["atnan"],"game_mode":1,"new_player_can_build":false,"ops":["chrislloyd"],"seed":1.23456789e+08,"spawn_animals":true,"spawn_monsters":true,"whitelisted":["whatupdave"]}}`
+	expected := `{"id":"1234","funpackId":"minecraft-essentials","funpack":"","port":4032,"ram":{"min":1024,"max":1024},"settings":{"banned":["atnan"],"game_mode":1,"new_player_can_build":false,"ops":["chrislloyd"],"seed":1.23456789e+08,"spawn_animals":true,"spawn_monsters":true,"whitelisted":["whatupdave"]}}`
 
 	if string(serverJson) != expected {
 		t.Error("expected", expected, "was", string(serverJson))
@@ -67,11 +67,11 @@ func TestJobPopper(t *testing.T) {
 	client.Lpush("test:in", `{"name":"test","msg":"1"}`)
 	client.Lpush("test:in", `{"name":"test","msg":"2"}`)
 
-	time.Sleep(1 * time.Second)
+	// time.Sleep(1 * time.Second)
 
 	queue.Stop()
 
-	time.Sleep(5 * time.Second)
+	// time.Sleep(5 * time.Second)
 
 	client.Lpush("test:in", `{"name":"test","msg":"3"}`)
 	jobs = make([]Job, 0)
@@ -82,5 +82,5 @@ func TestJobPopper(t *testing.T) {
 		fmt.Println("should be empty:", jobs)
 	}()
 
-	time.Sleep(5 * time.Second)
+	// time.Sleep(5 * time.Second)
 }

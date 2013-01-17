@@ -14,11 +14,17 @@ import (
 // thanks to @mmcgrana 
 // http://blog.librato.com/2012/06/sf-metrics-meetup-videos-visibility-at.html
 
+type DataLogger interface {
+	Info(data map[string]interface{})
+	Error(err error, data map[string]interface{})
+	Out(level string, data map[string]interface{})
+}
+
 type Logger struct {
 	MetaData map[string]interface{}
 }
 
-func NewLog(metadata map[string]interface{}) *Logger {
+func NewLog(metadata map[string]interface{}) DataLogger {
 	return &Logger{MetaData: metadata}
 }
 

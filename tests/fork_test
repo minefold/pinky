@@ -1,0 +1,35 @@
+#!/usr/bin/env ruby
+
+$stdout.sync = true
+
+def log(msg)
+  puts "#{Process.pid}:#{msg}"
+end
+
+def run(io_in = nil)
+  log 'started'
+  trap(:TERM) do
+    log 'quitting'
+    sleep 2
+    exit
+  end
+
+  i = 0
+  while true
+    i += 1
+    if io_in
+      command = io_in.gets
+      log "command: #{command}"
+    else
+      log "working: #{i}"
+    end
+    sleep 5
+  end
+end
+
+if fork
+  run($stdin)
+else
+  sleep 2
+  run
+end

@@ -40,7 +40,7 @@ func NewWipGenerator() *WipGenerator {
 			})
 
 			go func() {
-				ticker := time.NewTicker(60 * time.Second)
+				ticker := time.NewTicker(10 * time.Minute)
 				for {
 					select {
 					case <-finished:

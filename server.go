@@ -22,7 +22,7 @@ type Server struct {
 	Port      int
 	HasWorld  bool
 	Proc      *ManagedProcess
-	Log       *Logger
+	Log       DataLogger
 	State     string
 	FunpackId string
 }
@@ -185,40 +185,55 @@ func (s *Server) Monitor() (chan ServerEvent, error) {
 	return eventsOut, nil
 }
 
+func waitFor(duration time.Duration, test func() bool) bool {
+	t := time.NewTicker(1 * time.Second)
+	started := time.Now()
+
+	for _ = range t.C {
+		if test() {
+			return true
+		}
+		if time.Since(started) > 60*time.Second {
+			break
+		}
+	}
+
+	return false
+}
+
 func (s *Server) EnsureServerStopped() {
-	time.Sleep(30 * time.Second)
-	if !s.Proc.IsRunning() {
+	if s.Proc.WaitForExit(60 * time.Second) {
 		return
 	}
 
-	time.Sleep(60 * time.Second)
-	if !s.Proc.IsRunning() {
-		return
-	}
-	plog.Info(map[string]interface{}{
-		"event":  "server_exit_timeout",
-		"server": s.Id,
+	// didn't stop after 1 minute, send TERM
+	s.Log.Info(map[string]interface{}{
+		"event":  "ensure_stop_timeout",
 		"pid":    s.Pid,
 		"action": "TERM",
 	})
 	s.Kill(syscall.SIGTERM)
-
-	time.Sleep(60 * time.Second)
-	if !s.Proc.IsRunning() {
+	if s.Proc.WaitForExit(60 * time.Second) {
 		return
 	}
+
+	// didn't stop after 1 minute, send KILL until exit
 	for {
-		plog.Info(map[string]interface{}{
-			"event":  "server_exit_timeout",
-			"server": s.Id,
+		s.Log.Info(map[string]interface{}{
+			"event":  "ensure_stop_timeout",
 			"pid":    s.Pid,
 			"action": "KILL",
 		})
 		s.Kill(syscall.SIGKILL)
 		if !s.Proc.IsRunning() {
+			s.Log.Info(map[string]interface{}{
+				"event":   "ensure_stop_finished",
+				"details": "exited with KILL",
+				"pid":     s.Pid,
+			})
 			return
 		}
-		time.Sleep(60 * time.Second)
+		time.Sleep(5 * time.Second)
 	}
 }
 
@@ -228,6 +243,7 @@ func (s *Server) parseEvent(line []byte) (event ServerEvent, err error) {
 }
 
 func (s *Server) Stop() {
+	// TODO this hangs if server is stopped
 	s.Writeln("stop")
 	s.EnsureServerStopped()
 }
@@ -262,7 +278,7 @@ func (s *Server) Writeln(line string) error {
 }
 
 func (s *Server) Kill(sig syscall.Signal) {
-	syscall.Kill(-s.Pid, sig)
+	syscall.Kill(s.Pid, sig)
 }
 
 func execWithOutput(cmd *exec.Cmd, outWriter io.Writer, errWriter io.Writer) (err error) {
@@ -327,17 +343,23 @@ func (s *Server) StartServerProcess(pidFile string) (pid int, err error) {
 	// maybe a check for the existence of a backup script
 	bufferCmd, _ := filepath.Abs("bin/buffer-process")
 
-	plog.Info(map[string]interface{}{
+	s.Log.Info(map[string]interface{}{
 		"event":      "starting_server",
 		"workingDir": s.workingPath(),
 		"pidFile":    pidFile,
 		"serverFile": serverFile,
 	})
 
-	cmd := exec.Command(bufferCmd, "-d", s.Path, "-p", pidFile, command, serverFile)
+	cmd := exec.Command(bufferCmd,
+		"-d", s.Path,
+		"-p", pidFile,
+		"-l", filepath.Join(s.Path, "buffer.log"),
+		command,
+		serverFile)
 	cmd.Env = os.Environ()
 	cmd.Env = append(cmd.Env, "BUNDLE_GEMFILE="+s.funpackPath("Gemfile"))
 	cmd.Env = append(cmd.Env, "BUILD_DIR="+s.funpackBuildPath())
+	cmd.Dir = s.workingPath()
 
 	go execWithOutput(cmd, os.Stdout, os.Stderr)
 
@@ -351,7 +373,7 @@ func (s *Server) StartServerProcess(pidFile string) (pid int, err error) {
 		return 0, err
 	}
 
-	s.Proc = NewManagedProcess(cmd.Process.Pid)
+	s.Proc = NewManagedProcess(s.Pid)
 	return s.Pid, nil
 }
 

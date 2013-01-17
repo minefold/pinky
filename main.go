@@ -50,11 +50,11 @@ type PinkyServerEvent struct {
 
 var redisClient *redis.Client
 var boxId string
-var servers = map[string]*Server{}
+var servers = NewServers()
 var serverRoot string
 var wipGen *WipGenerator
 var portPool chan int
-var plog *Logger // pinky logger
+var plog DataLogger // pinky logger
 
 func serverPath(serverId string) string {
 	return filepath.Join(serverRoot, serverId)
@@ -65,11 +65,11 @@ func pidFile(serverId string) string {
 }
 
 func startServer(serverId string, funpackId string, funpackUrl string, snapshotId string, worldUrl string, ram RamAllocation, settings interface{}) error {
-	if _, present := servers[serverId]; !present {
+	if !servers.Exists(serverId) {
 
 		port := <-portPool
 
-		server := &Server{
+		server := servers.Add(&Server{
 			Id:   serverId,
 			Path: filepath.Join(serverRoot, serverId),
 			Port: port,
@@ -77,9 +77,7 @@ func startServer(serverId string, funpackId string, funpackUrl string, snapshotI
 				"serverId": serverId,
 			}),
 			State: "starting",
-		}
-
-		servers[server.Id] = server
+		})
 
 		plog.Info(map[string]interface{}{
 			"event":    "server_starting",
@@ -155,7 +153,6 @@ func runBackups(stop chan bool, serverId string) {
 			runPeriodicBackup(serverId)
 
 		case <-stop:
-			ticker.Stop()
 			plog.Info(map[string]interface{}{
 				"event":    "periodic_backups_stopped",
 				"serverId": serverId,
@@ -184,36 +181,16 @@ func runPeriodicBackup(serverId string) {
 	})
 }
 
-func startTicking(serverId string, stop chan bool) {
-	minute := time.NewTicker(60 * time.Second)
-	go func() {
-		for {
-			select {
-			case <-minute.C:
-				pushServerEvent(PinkyServerEvent{
-					PinkyId:  boxId,
-					ServerId: serverId,
-					Ts:       time.Now(),
-					Type:     "minute",
-				})
-			case <-stop:
-				minute.Stop()
-			}
-
-		}
-	}()
-}
-
 func processServerEvents(serverId string, events chan ServerEvent, attached bool) {
 	stopBackups := make(chan bool, 1)
 	stopTicks := make(chan bool, 1)
 
 	// Not sure why this is happening:
-	if _, ok := servers[serverId]; !ok {
+	if !servers.Exists(serverId) {
 		return
 	}
 
-	hasWorld := servers[serverId].HasWorld
+	hasWorld := servers.Get(serverId).HasWorld
 
 	if hasWorld {
 		go runBackups(stopBackups, serverId)
@@ -228,29 +205,23 @@ func processServerEvents(serverId string, events chan ServerEvent, attached bool
 		})
 	}
 
-	if attached {
-		// we are reattaching to a running server
-		// so we can't wait for a started event
-		// we need to start ticking straight away
-		startTicking(serverId, stopTicks)
-	}
-
 	var stopWip chan bool
+
+	server := servers.Get(serverId)
 
 	for event := range events {
 		switch event.Event {
 		case "started":
-			servers[serverId].State = "up"
-			startTicking(serverId, stopTicks)
+			server.State = "up"
 		case "stopping":
-			if servers[serverId].State != "stopping" {
-				servers[serverId].State = "stopping"
+			if server.State != "stopping" {
+				server.State = "stopping"
 				stopWip = <-wipGen.C
 			}
 
 		case "fatal_error":
-			servers[serverId].Kill(syscall.SIGKILL)
-			go servers[serverId].EnsureServerStopped()
+			server.Kill(syscall.SIGKILL)
+			go server.EnsureServerStopped()
 		}
 
 		pushServerEvent(PinkyServerEvent{
@@ -280,7 +251,7 @@ func processServerEvents(serverId string, events chan ServerEvent, attached bool
 	stopTicks <- true
 	stopBackups <- true
 
-	if hasWorld && servers[serverId].State != "starting" {
+	if hasWorld && servers.Get(serverId).State != "starting" {
 		plog.Info(map[string]interface{}{
 			"event":    "shutdown_backup_starting",
 			"serverId": serverId,
@@ -302,9 +273,9 @@ func processServerEvents(serverId string, events chan ServerEvent, attached bool
 	removeServerArtifacts(serverId)
 
 	// Not sure why this is happening:
-	if _, ok := servers[serverId]; ok {
-		portPool <- servers[serverId].Port
-		delete(servers, serverId)
+	if server := servers.Get(serverId); server != nil {
+		portPool <- server.Port
+		servers.Del(serverId)
 	}
 
 	pushServerEvent(PinkyServerEvent{
@@ -324,7 +295,7 @@ func backupServer(serverId string, backupTime time.Time) (err error) {
 	wip := <-wipGen.C
 	defer close(wip)
 
-	server := servers[serverId]
+	server := servers.Get(serverId)
 	if server == nil {
 		err = errors.New(fmt.Sprintf("no server for %s", serverId))
 		return
@@ -375,8 +346,7 @@ func backupServer(serverId string, backupTime time.Time) (err error) {
 }
 
 func stopServer(serverId string) {
-	server, ok := servers[serverId]
-	if ok {
+	if server := servers.Get(serverId); server != nil {
 		wip := <-wipGen.C
 		defer close(wip)
 
@@ -396,52 +366,39 @@ func stopServer(serverId string) {
 	}
 }
 
-func broadcast(serverId string, message string) {
-	server := servers[serverId]
-	if server == nil {
+func ServerOp(serverId string, name string, op func(*Server)) {
+	if server := servers.Get(serverId); server != nil {
+		op(server)
+	} else {
 		plog.Error(errors.New("Server not found"), map[string]interface{}{
-			"event":    "broadcast",
+			"event":    name,
 			"serverId": serverId,
 		})
-		return
 	}
-	server.Broadcast(message)
+}
+
+func broadcast(serverId string, message string) {
+	ServerOp(serverId, "broadcast", func(server *Server) {
+		server.Broadcast(message)
+	})
 }
 
 func tell(serverId string, username string, message string) {
-	server := servers[serverId]
-	if server == nil {
-		plog.Error(errors.New("Server not found"), map[string]interface{}{
-			"event":    "tell",
-			"serverId": serverId,
-		})
-		return
-	}
-	server.Tell(username, message)
+	ServerOp(serverId, "tell", func(server *Server) {
+		server.Tell(username, message)
+	})
 }
 
 func listPlayers(serverId string) {
-	server := servers[serverId]
-	if server == nil {
-		plog.Error(errors.New("Server not found"), map[string]interface{}{
-			"event":    "list_players",
-			"serverId": serverId,
-		})
-		return
-	}
-	server.ListPlayers()
+	ServerOp(serverId, "tell", func(server *Server) {
+		server.ListPlayers()
+	})
 }
 
 func kickPlayer(serverId string, username string, message string) {
-	server := servers[serverId]
-	if server == nil {
-		plog.Error(errors.New("Server not found"), map[string]interface{}{
-			"event":    "kick",
-			"serverId": serverId,
-		})
-		return
-	}
-	server.Kick(username, message)
+	ServerOp(serverId, "tell", func(server *Server) {
+		server.Kick(username, message)
+	})
 }
 
 func removeServerArtifacts(serverId string) {
@@ -611,9 +568,10 @@ func processJobs(jobChannel chan Job) {
 					job.Settings)
 
 				if err != nil {
-					delete(servers, job.ServerId)
+					servers.Del(job.ServerId)
 					plog.Error(err, map[string]interface{}{
-						"event": "server_start_error",
+						"event":  "server_start_error",
+						"server": job.ServerId,
 					})
 					pushServerEvent(PinkyServerEvent{
 						PinkyId:  boxId,
@@ -650,10 +608,6 @@ func processJobs(jobChannel chan Job) {
 	}
 }
 
-func isAlive(pid int) bool {
-	return syscall.Kill(pid, 0) == nil
-}
-
 // returns serverId, pid
 func readPidFromFile(pidFile string) (serverId string, pid int, err error) {
 	b, err := ioutil.ReadFile(pidFile)
@@ -688,7 +642,7 @@ func discoverRunningServers() {
 			"serverPath": serverPath,
 		})
 
-		if isAlive(pid) {
+		if IsRunning(pid) {
 			plog.Info(map[string]interface{}{
 				"event":    "running_server",
 				"serverId": serverId,
@@ -724,7 +678,7 @@ func discoverRunningServers() {
 				panic(err)
 				continue
 			}
-			servers[serverId] = server
+			servers.Add(server)
 			go processServerEvents(serverId, events, true)
 
 		} else {
@@ -745,7 +699,7 @@ func cleanOldServers() error {
 	}
 	for _, key := range keys {
 		serverId := strings.Split(key, ":")[3]
-		if _, ok := servers[serverId]; !ok {
+		if !servers.Exists(serverId) {
 			removeServerArtifacts(serverId)
 			plog.Info(map[string]interface{}{
 				"event":    "dead_server_removed",
@@ -760,14 +714,6 @@ func cleanOldServers() error {
 		}
 	}
 	return nil
-}
-
-func portsInUse() []int {
-	ports := make([]int, 100)
-	for _, server := range servers {
-		ports = append(ports, server.Port)
-	}
-	return ports
 }
 
 func waitForNoWorkInProgress() {
@@ -816,13 +762,14 @@ func main() {
 	}
 
 	// allocate 200 ports starting at 10000 with a 100 port gap
-	portPool = NewIntPool(10000, 200, 100, portsInUse())
+	portPool = NewIntPool(10000, 200, 100, servers.PortsReserved())
 
 	boxQueueKey := fmt.Sprintf("pinky:%s:in", boxId)
 	jobPopper := NewJobPopper(boxQueueKey)
 
 	// start heartbeat
 	go heartbeat(serverRoot)
+	go servers.Tick()
 
 	setStateTo("up")
 
