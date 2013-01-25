@@ -37,6 +37,7 @@ type PinkyServerEvent struct {
 	// these fields for the backed_up event
 	SnapshotId string `json:"snapshot_id"`
 	Url        string `json:"url"`
+	Size       int64  `json:"size"`
 
 	// these fields for the player events
 	Username  string   `json:"username"`
@@ -301,10 +302,13 @@ func backupServer(serverId string, backupTime time.Time) (err error) {
 		return
 	}
 
-	var url string
+	var (
+		url  string
+		size int64
+	)
 	err = retry(1000, 5*time.Second, func(retries int) error {
 		var err error
-		url, err = server.BackupWorld(backupTime)
+		url, size, err = server.BackupWorld(backupTime)
 		if err != nil {
 			plog.Error(err, map[string]interface{}{
 				"event":    "world_backup",
@@ -321,7 +325,7 @@ func backupServer(serverId string, backupTime time.Time) (err error) {
 	var snapshotId bson.ObjectId
 	err = retry(1000, 5*time.Second, func(retries int) error {
 		var err error
-		snapshotId, err = storeBackupInMongo(serverId, url, backupTime)
+		snapshotId, err = StoreBackupInMongo(serverId, url, size, backupTime)
 		if err != nil {
 			plog.Error(err, map[string]interface{}{
 				"event":    "world_db_store",
@@ -340,6 +344,7 @@ func backupServer(serverId string, backupTime time.Time) (err error) {
 		Type:       "backed_up",
 		SnapshotId: snapshotId.Hex(),
 		Url:        url,
+		Size:       size,
 	})
 
 	return
@@ -426,6 +431,7 @@ func pushServerEvent(event PinkyServerEvent) {
 		"msg":         event.Msg,
 		"snapshotId":  event.SnapshotId,
 		"url":         event.Url,
+		"size":        event.Size,
 		"username":    event.Username,
 		"usernames":   event.Usernames,
 		"actor":       event.Actor,
@@ -694,6 +700,7 @@ func discoverRunningServers() {
 
 func cleanOldServers() error {
 	keys, err := redisClient.Keys(pinkyServersKey())
+
 	if err != nil {
 		return err
 	}
@@ -751,12 +758,20 @@ func main() {
 		serverRoot, _ = filepath.Abs("tmp/servers")
 	}
 
+	// test redis connection
 	redisClient = NewRedisConnection()
+
+	// test mongo connection
+	serverCount, err := CountServers()
+	if err != nil {
+		panic(err)
+	}
 
 	exec.Command("mkdir", "-p", serverRoot).Run()
 
 	discoverRunningServers()
-	err := cleanOldServers()
+
+	err = cleanOldServers()
 	if err != nil {
 		panic(err)
 	}
@@ -777,11 +792,12 @@ func main() {
 	syscall.Getrlimit(syscall.RLIMIT_NOFILE, &fdLimit)
 
 	plog.Out("info", map[string]interface{}{
-		"event":      "pinky_up",
-		"queue":      boxQueueKey,
-		"servers":    serverRoot,
-		"fd_current": fdLimit.Cur,
-		"fd_max":     fdLimit.Max,
+		"event":        "pinky_up",
+		"queue":        boxQueueKey,
+		"servers":      serverRoot,
+		"fd_current":   fdLimit.Cur,
+		"fd_max":       fdLimit.Max,
+		"server_count": serverCount,
 	})
 
 	go processJobs(jobPopper.C)

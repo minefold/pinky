@@ -7,7 +7,11 @@ import (
 )
 
 func NewRedisConnection() *redis.Client {
-	redisUrl, err := url.Parse(os.Getenv("REDIS_URL"))
+	urlString := os.Getenv("REDIS_URL")
+	if urlString == "" {
+		urlString = "redis://10.0.2.2:6379"
+	}
+	redisUrl, err := url.Parse(urlString)
 	if err != nil {
 		panic(err)
 	}

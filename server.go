@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -432,9 +433,9 @@ func (s *Server) DownloadWorld(world string) error {
 	return restoreDir(world, s.workingPath())
 }
 
-func (s *Server) BackupWorld(backupTime time.Time) (url string, err error) {
+func (s *Server) BackupWorld(backupTime time.Time) (url string, size int64, err error) {
 	if !s.HasWorld {
-		return "", errors.New("Nothing to back up")
+		return "", 0, errors.New("Nothing to back up")
 	}
 
 	bucket := os.Getenv("BACKUP_BUCKET")
@@ -461,8 +462,9 @@ func (s *Server) BackupWorld(backupTime time.Time) (url string, err error) {
 
 	cmd := exec.Command(archiveDirBin, args...)
 	cmd.Dir = s.workingPath()
+	out, err := cmd.Output()
 
-	err = execWithOutput(cmd, os.Stdout, os.Stderr)
+	size, _ = strconv.ParseInt(strings.TrimSpace(string(out)), 0, 0)
 
 	return
 }

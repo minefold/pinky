@@ -30,7 +30,6 @@ else
 end
 
 def run cmd
-  $stderr.puts cmd
   success = system cmd
   raise "Failed: '#{cmd}'" unless success
 end
@@ -38,4 +37,5 @@ end
 Tempfile.open(File.basename(REMOTE)) do |f|
   run "tar #{compression} -cf #{f.path} #{compress_args.map{|arg| %Q{"#{arg}"}}.join(' ')}"
   run "#{S3CURL} --put '#{f.path}' -- #{REMOTE} --silent --show-error"
+  puts File.size(f.path)
 end

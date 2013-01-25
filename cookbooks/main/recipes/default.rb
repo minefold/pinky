@@ -14,6 +14,8 @@ end
   libssl-dev
   zlib1g-dev
 
+  ntp
+
   lib32gcc1
 
   git
@@ -22,13 +24,18 @@ end
   lzop
   expect-dev
 
-  mongodb
+  golang-go
   ).each do |pkg|
   package pkg
 end
 
-%w(rake posix-spawn).each do |gem|
+%w(rake posix-spawn bundler).each do |gem|
   gem_package gem
+end
+
+# go
+execute "chown go dir" do
+  command "chown -RL vagrant /usr/lib/go"
 end
 
 # install java
