@@ -31,9 +31,16 @@ type Server struct {
 type ServerEvent struct {
 	Ts    time.Time
 	Event string
-	Msg   string
+
+	Nick string
+	Msg  string
 
 	// these fields for the player events
+	Auth string
+	Uid  string
+	Uids []string
+
+	// deprecated
 	Username  string
 	Usernames []string
 

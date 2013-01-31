@@ -5,6 +5,8 @@ Vagrant::Config.run do |config|
 
   config.vm.customize ["modifyvm", :id, "--memory", 1024 * 5]
 
+  config.vm.boot_mode = :gui
+
   (10000..12000).each do |port|
     config.vm.forward_port port, port
     config.vm.forward_port port, port, protocol: 'udp'
@@ -16,7 +18,7 @@ Vagrant::Config.run do |config|
     #   "~/code/minefold/cookbooks"]
 
     chef.add_recipe "main"
-    chef.add_recipe "golang"
+    # chef.add_recipe "golang"
     # chef.add_recipe "java"
     chef.add_recipe "party-cloud"
     chef.add_recipe "party-cloud::bootstrap"

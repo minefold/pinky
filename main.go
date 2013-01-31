@@ -32,7 +32,10 @@ type PinkyServerEvent struct {
 	PinkyId  string    `json:"pinky_id"`
 	ServerId string    `json:"server_id"`
 	Type     string    `json:"type"`
-	Msg      string    `json:"msg"`
+
+	// Chat
+	Msg  string `json:"msg"`
+	Nick string `json:"nick"`
 
 	// these fields for the backed_up event
 	SnapshotId string `json:"snapshot_id"`
@@ -40,6 +43,11 @@ type PinkyServerEvent struct {
 	Size       int64  `json:"size"`
 
 	// these fields for the player events
+	Auth string   `json:"auth"`
+	Uids []string `json:"uids"`
+	Uid  string   `json:"uid"`
+
+	// Deprecated
 	Username  string   `json:"username"`
 	Usernames []string `json:"usernames"`
 
@@ -230,9 +238,13 @@ func processServerEvents(serverId string, events chan ServerEvent, attached bool
 			ServerId:  serverId,
 			Ts:        event.Ts,
 			Type:      event.Event,
+			Nick:      event.Nick,
 			Msg:       event.Msg,
-			Username:  event.Username,
+			Auth:      event.Auth,
+			Uid:       event.Uid,
+			Uids:      event.Uids,
 			Usernames: event.Usernames,
+			Username:  event.Username,
 			Actor:     event.Actor,
 			Key:       event.Key,
 			Value:     event.Value,
@@ -428,10 +440,14 @@ func pushServerEvent(event PinkyServerEvent) {
 		"event":       "server_event",
 		"serverId":    event.ServerId,
 		"serverEvent": event.Type,
+		"nick":        event.Nick,
 		"msg":         event.Msg,
 		"snapshotId":  event.SnapshotId,
 		"url":         event.Url,
 		"size":        event.Size,
+		"auth":        event.Auth,
+		"uid":         event.Uid,
+		"uids":        event.Uids,
 		"username":    event.Username,
 		"usernames":   event.Usernames,
 		"actor":       event.Actor,
