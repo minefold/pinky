@@ -13,13 +13,16 @@ type Job struct {
 	Ram        RamAllocation
 	SnapshotId string
 	WorldUrl   string
-	Settings   interface{}
+	Data       interface{}
 
 	// for broadcast
 	Msg string
 
 	// for tell & kick
 	Username string
+
+	// TODO deprecate
+	Settings interface{}
 }
 
 type JobPopper struct {

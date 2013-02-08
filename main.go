@@ -73,7 +73,7 @@ func pidFile(serverId string) string {
 	return filepath.Join(serverRoot, fmt.Sprintf("%s.pid", serverId))
 }
 
-func startServer(serverId string, funpackId string, funpackUrl string, snapshotId string, worldUrl string, ram RamAllocation, settings interface{}) error {
+func startServer(serverId string, funpackId string, funpackUrl string, snapshotId string, worldUrl string, ram RamAllocation, settings interface{}, data interface{}) error {
 	if !servers.Exists(serverId) {
 
 		port := <-portPool
@@ -107,11 +107,16 @@ func startServer(serverId string, funpackId string, funpackUrl string, snapshotI
 			return err
 		}
 
-		server.WriteSettingsFile(
+		// TODO: remove when we're no longer using settings
+		if data == nil {
+			data = settings
+		}
+
+		server.WriteDataFile(
 			funpackId,
 			funpackUrl,
 			ram,
-			settings)
+			data)
 
 		pid, err := server.StartServerProcess(pidFile)
 		if err != nil {
@@ -587,7 +592,8 @@ func processJobs(jobChannel chan Job) {
 					job.SnapshotId,
 					job.WorldUrl,
 					job.Ram,
-					job.Settings)
+					job.Settings,
+					job.Data)
 
 				if err != nil {
 					servers.Del(job.ServerId)

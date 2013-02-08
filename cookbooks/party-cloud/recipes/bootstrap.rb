@@ -21,7 +21,7 @@ funpacks = [
 ]
 
 funpacks.each do |fp|
-  %w(pack build cache).each do |dir|
+  %w(pack build).each do |dir|
     directory "#{base_dir}/#{fp[:id]}/#{dir}" do
       owner user
       mode 00755
@@ -41,12 +41,7 @@ funpacks.each do |fp|
 
   execute "bootstrap funpack #{fp[:id]}" do
     cwd funpack_dir
-    command "pack/bin/bootstrap build cache"
+    command "pack/bin/bootstrap build"
     only_if { File.exists?("pack/bin/bootstrap") }
-  end
-
-  execute "remove funpack cache #{fp[:id]}" do
-    command "rm -rf cache"
-    cwd funpack_dir
   end
 end

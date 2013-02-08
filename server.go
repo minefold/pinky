@@ -317,13 +317,11 @@ func execWithOutput(cmd *exec.Cmd, outWriter io.Writer, errWriter io.Writer) (er
 	return
 }
 
-func (s *Server) WriteSettingsFile(
+func (s *Server) WriteDataFile(
 	funpackId string,
 	funpackUrl string,
 	ram RamAllocation,
 	settings interface{}) error {
-
-	serverFile := filepath.Join(s.Path, "server.json")
 
 	server := ServerSettings{
 		Id:       s.Id,
@@ -337,25 +335,20 @@ func (s *Server) WriteSettingsFile(
 		return err
 	}
 
-	ioutil.WriteFile(serverFile, serverJson, 0644)
+	ioutil.WriteFile(s.DataFile(), serverJson, 0644)
 	return nil
 }
 
 func (s *Server) StartServerProcess(pidFile string) (pid int, err error) {
-	serverFile := filepath.Join(s.Path, "server.json")
+	// TODO run Procfile instead of bin/run
 	command := filepath.Join(s.Path, "funpack", "bin", "run")
-
-	// TODO some check to know if a funpack should run out of
-	// a working directory like Minecraft does or out of the
-	// funpack/server directory like TF2 does
-	// maybe a check for the existence of a backup script
 	bufferCmd, _ := filepath.Abs("bin/buffer-process")
 
 	s.Log.Info(map[string]interface{}{
 		"event":      "starting_server",
 		"workingDir": s.workingPath(),
 		"pidFile":    pidFile,
-		"serverFile": serverFile,
+		"dataFile":   s.DataFile(),
 	})
 
 	cmd := exec.Command(bufferCmd,
@@ -363,10 +356,12 @@ func (s *Server) StartServerProcess(pidFile string) (pid int, err error) {
 		"-p", pidFile,
 		"-l", filepath.Join(s.Path, "buffer.log"),
 		command,
-		serverFile)
+		s.DataFile())
 	cmd.Env = os.Environ()
 	cmd.Env = append(cmd.Env, "BUNDLE_GEMFILE="+s.funpackPath("Gemfile"))
-	cmd.Env = append(cmd.Env, "BUILD_DIR="+s.funpackBuildPath())
+	cmd.Env = append(cmd.Env, "SHARED_DIR="+s.funpackBuildPath())
+	cmd.Env = append(cmd.Env, "DATAFILE="+s.DataFile())
+	cmd.Env = append(cmd.Env, "PORT="+string(s.Port))
 	cmd.Dir = s.workingPath()
 
 	go execWithOutput(cmd, os.Stdout, os.Stderr)
@@ -550,6 +545,14 @@ func (s *Server) compilePath() string {
 	return s.funpackPath("bin", "compile")
 }
 
+func (s *Server) DataFile() string {
+	return filepath.Join(s.Path, "server.json")
+}
+
 func (s *Server) funpackBuildPath() string {
-	return filepath.Join(os.Getenv("FUNPACKS_PATH"), s.FunpackId, "build")
+	basePath := os.Getenv("FUNPACKS_PATH")
+	if basePath == "" {
+		basePath = "/usr/local/funpacks"
+	}
+	return filepath.Join(basePath, s.FunpackId, "build")
 }
