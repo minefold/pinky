@@ -344,13 +344,6 @@ func (s *Server) StartServerProcess(pidFile string) (pid int, err error) {
 	command := filepath.Join(s.Path, "funpack", "bin", "run")
 	bufferCmd, _ := filepath.Abs("bin/buffer-process")
 
-	s.Log.Info(map[string]interface{}{
-		"event":      "starting_server",
-		"workingDir": s.workingPath(),
-		"pidFile":    pidFile,
-		"dataFile":   s.DataFile(),
-	})
-
 	cmd := exec.Command(bufferCmd,
 		"-d", s.Path,
 		"-p", pidFile,
@@ -361,8 +354,16 @@ func (s *Server) StartServerProcess(pidFile string) (pid int, err error) {
 	cmd.Env = append(cmd.Env, "BUNDLE_GEMFILE="+s.funpackPath("Gemfile"))
 	cmd.Env = append(cmd.Env, "SHARED_DIR="+s.funpackBuildPath())
 	cmd.Env = append(cmd.Env, "DATAFILE="+s.DataFile())
-	cmd.Env = append(cmd.Env, "PORT="+string(s.Port))
+	cmd.Env = append(cmd.Env, "PORT="+strconv.Itoa(s.Port))
 	cmd.Dir = s.workingPath()
+
+	s.Log.Info(map[string]interface{}{
+		"event":      "starting_server",
+		"workingDir": s.workingPath(),
+		"pidFile":    pidFile,
+		"dataFile":   s.DataFile(),
+		"env":        cmd.Env,
+	})
 
 	go execWithOutput(cmd, os.Stdout, os.Stderr)
 
