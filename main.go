@@ -163,7 +163,7 @@ func startServer(serverId string, funpackId string, funpackUrl string, snapshotI
 }
 
 func runBackups(stop chan bool, serverId string) {
-	ticker := time.NewTicker(1 * time.Minute)
+	ticker := time.NewTicker(15 * time.Minute)
 
 	for {
 		select {
