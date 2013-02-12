@@ -164,7 +164,6 @@ $SERVERS/1234/backup    (ditto)
 ## TODO
 
 push start failures onto queue
-change periodic backups to regular jobs so they queue up
 on stop, stop processing server events
 log application crashes with bugsnag
 recover backups not working (s3 down?)

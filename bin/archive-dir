@@ -38,7 +38,7 @@ Tempfile.open(File.basename(REMOTE)) do |f|
   run "tar #{compression} -cf #{f.path} #{compress_args.map{|arg| %Q{"#{arg}"}}.join(' ')}"
   run "#{S3CURL} --put '#{f.path}' -- #{REMOTE} --silent --show-error"
   begin
-    run "#{S3CURL} --head -- #{REMOTE} --silent --show-error | grep '200 OK'"
+    run "#{S3CURL} --head -- #{REMOTE} --silent --show-error | grep '200 OK' > /dev/null"
   rescue
     run "#{S3CURL} --head -- #{REMOTE} --silent --show-error"
     raise

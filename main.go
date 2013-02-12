@@ -57,13 +57,17 @@ type PinkyServerEvent struct {
 	Value string `json:"value"`
 }
 
-var redisClient *redis.Client
-var boxId string
-var servers = NewServers()
-var serverRoot string
-var wipGen *WipGenerator
-var portPool chan int
-var plog DataLogger // pinky logger
+// Globals. Probably a bad idea
+var (
+	redisClient *redis.Client
+	boxId       string
+	servers     = NewServers()
+	serverRoot  string
+	wipGen      *WipGenerator
+	portPool    chan int
+	plog        DataLogger // pinky logger	
+	jobPopper   *JobPopper
+)
 
 func serverPath(serverId string) string {
 	return filepath.Join(serverRoot, serverId)
@@ -159,12 +163,15 @@ func startServer(serverId string, funpackId string, funpackUrl string, snapshotI
 }
 
 func runBackups(stop chan bool, serverId string) {
-	ticker := time.NewTicker(10 * time.Minute)
+	ticker := time.NewTicker(1 * time.Minute)
 
 	for {
 		select {
 		case <-ticker.C:
-			runPeriodicBackup(serverId)
+			jobPopper.C <- Job{
+				Name:     "backup",
+				ServerId: serverId,
+			}
 
 		case <-stop:
 			plog.Info(map[string]interface{}{
@@ -626,6 +633,9 @@ func processJobs(jobChannel chan Job) {
 		case "kick":
 			go kickPlayer(job.ServerId, job.Username, job.Msg)
 
+		case "backup":
+			go runPeriodicBackup(job.ServerId)
+
 		default:
 			plog.Info(map[string]interface{}{
 				"event":  "job_ignored",
@@ -802,7 +812,7 @@ func main() {
 	portPool = NewIntPool(10000, 200, 100, servers.PortsReserved())
 
 	boxQueueKey := fmt.Sprintf("pinky:%s:in", boxId)
-	jobPopper := NewJobPopper(boxQueueKey)
+	jobPopper = NewJobPopper(boxQueueKey)
 
 	// start heartbeat
 	go heartbeat(serverRoot)
