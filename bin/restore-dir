@@ -32,4 +32,9 @@ def run cmd
   raise "Failed: '#{cmd}'" unless success
 end
 
-run "#{S3CURL} -- #{REMOTE} --silent --show-error | #{decompression}"
+begin
+  run "#{S3CURL} -- #{REMOTE} --silent --show-error | #{decompression}"
+rescue
+  run "#{S3CURL} -- #{REMOTE} --silent --show-error"
+  raise
+end

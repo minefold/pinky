@@ -12,6 +12,7 @@ OptionParser.new do |o|
   o.banner = "Usage: #{$0} [options] -- [curl-options] [URL]"
   o.separator ""
   o.separator "options:"
+  o.on('--head', 'HEAD request') { $do_head = true }
   o.on('--put <filename>', 'PUT request (from the provided local file)') { |filename| $filename = filename }
   o.parse!
 end
@@ -39,7 +40,7 @@ else
   abort "no url found in curl args"
 end
 
-verb = 'GET'
+verb = $do_head ? 'HEAD' : 'GET'
 content_md5 = ''
 content_type = ''
 http_date = Time.now.httpdate
@@ -70,6 +71,7 @@ aws_args = [
   "-L"
 ]
 
+aws_args << "-I" if $do_head
 aws_args << "-T '#{$filename}'" if $filename
 
 cmd = %Q{curl #{aws_args.join(' ')} #{curl_args.join(' ')}}
