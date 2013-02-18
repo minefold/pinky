@@ -77,7 +77,9 @@ func pidFile(serverId string) string {
 	return filepath.Join(serverRoot, fmt.Sprintf("%s.pid", serverId))
 }
 
-func startServer(serverId string, funpackId string, funpackUrl string, snapshotId string, worldUrl string, ram RamAllocation, settings interface{}, data interface{}) error {
+func startServer(serverId string, funpackId string, funpackUrl string,
+	worldUrl string, ram RamAllocation,
+	settings interface{}, data string) error {
 	if !servers.Exists(serverId) {
 
 		port := <-portPool
@@ -112,15 +114,13 @@ func startServer(serverId string, funpackId string, funpackUrl string, snapshotI
 		}
 
 		// TODO: remove when we're no longer using settings
-		if data == nil {
-			data = settings
-		}
-
-		server.WriteDataFile(
+		server.WriteSettingsFile(
 			funpackId,
 			funpackUrl,
 			ram,
-			data)
+			settings)
+
+		server.WriteDataFile(data)
 
 		pid, err := server.StartServerProcess(pidFile)
 		if err != nil {
@@ -581,9 +581,15 @@ func processJobs(jobChannel chan Job) {
 		}
 
 		plog.Info(map[string]interface{}{
-			"event":  "job_received",
-			"name":   job.Name,
-			"server": job.ServerId,
+			"event":      "job_received",
+			"name":       job.Name,
+			"server":     job.ServerId,
+			"funpack":    job.FunpackId,
+			"funpackUrl": job.FunpackUrl,
+			"ram":        job.Ram,
+			"data":       job.Data,
+			"msg":        job.Msg,
+			"username":   job.Username,
 		})
 
 		switch job.Name {
@@ -596,7 +602,6 @@ func processJobs(jobChannel chan Job) {
 					job.ServerId,
 					job.FunpackId,
 					job.FunpackUrl,
-					job.SnapshotId,
 					job.WorldUrl,
 					job.Ram,
 					job.Settings,

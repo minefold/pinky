@@ -74,7 +74,7 @@ func AttachServer(id, path string, pid, port int) (*Server, error) {
 	s.Log = NewLog(map[string]interface{}{
 		"serverId": id,
 	})
-	s.HasWorld = fileExists(s.funpackPath("bin", "backup"))
+	s.HasWorld = fileExists(s.funpackPath("bin", "import"))
 	s.FunpackId = settings.FunpackId
 	s.State = "up"
 	return s, nil
@@ -317,7 +317,8 @@ func execWithOutput(cmd *exec.Cmd, outWriter io.Writer, errWriter io.Writer) (er
 	return
 }
 
-func (s *Server) WriteDataFile(
+// TODO: deprecate
+func (s *Server) WriteSettingsFile(
 	funpackId string,
 	funpackUrl string,
 	ram RamAllocation,
@@ -335,8 +336,12 @@ func (s *Server) WriteDataFile(
 		return err
 	}
 
-	ioutil.WriteFile(s.DataFile(), serverJson, 0644)
+	ioutil.WriteFile(s.SettingsFile(), serverJson, 0644)
 	return nil
+}
+
+func (s *Server) WriteDataFile(data string) error {
+	return ioutil.WriteFile(s.DataFile(), []byte(data), 0644)
 }
 
 func (s *Server) StartServerProcess(pidFile string) (pid int, err error) {
@@ -349,7 +354,7 @@ func (s *Server) StartServerProcess(pidFile string) (pid int, err error) {
 		"-p", pidFile,
 		"-l", filepath.Join(s.Path, "buffer.log"),
 		command,
-		s.DataFile())
+		s.SettingsFile()) // TODO: don't pass settings file
 
 	s.Log.Info(map[string]interface{}{
 		"event":      "starting_server",
@@ -402,7 +407,7 @@ func (s *Server) DownloadFunpack(funpackId string, funpackUrl string, testWorld 
 		return err
 	}
 
-	s.HasWorld = fileExists(s.funpackPath("bin", "backup"))
+	s.HasWorld = fileExists(s.funpackPath("bin", "import"))
 	s.FunpackId = funpackId
 
 	plog.Info(map[string]interface{}{
@@ -548,6 +553,10 @@ func (s *Server) compilePath() string {
 }
 
 func (s *Server) DataFile() string {
+	return filepath.Join(s.Path, "data.json")
+}
+
+func (s *Server) SettingsFile() string {
 	return filepath.Join(s.Path, "server.json")
 }
 

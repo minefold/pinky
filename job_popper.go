@@ -13,7 +13,7 @@ type Job struct {
 	Ram        RamAllocation
 	SnapshotId string
 	WorldUrl   string
-	Data       interface{}
+	Data       string
 
 	// for broadcast
 	Msg string
