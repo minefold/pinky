@@ -43,11 +43,14 @@ type ServerEvent struct {
 	// deprecated
 	Username  string
 	Usernames []string
+	Key       string
 
 	// these fields for the settings_changed events
-	Actor string
-	Key   string
-	Value string
+	Actor  string
+	Set    string
+	Add    string
+	Remove string
+	Value  string
 }
 
 type ServerSettings struct {

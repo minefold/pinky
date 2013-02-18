@@ -50,11 +50,14 @@ type PinkyServerEvent struct {
 	// Deprecated
 	Username  string   `json:"username"`
 	Usernames []string `json:"usernames"`
+	Key       string   `json:"key"`
 
 	// these fields for the settings_changed events
-	Actor string `json:"actor"`
-	Key   string `json:"key"`
-	Value string `json:"value"`
+	Actor  string `json:"actor"`
+	Add    string `json:"add"`
+	Remove string `json:"remove"`
+	Set    string `json:"set"`
+	Value  string `json:"value"`
 }
 
 // Globals. Probably a bad idea
@@ -258,6 +261,9 @@ func processServerEvents(serverId string, events chan ServerEvent, attached bool
 			Usernames: event.Usernames,
 			Username:  event.Username,
 			Actor:     event.Actor,
+			Set:       event.Set,
+			Add:       event.Add,
+			Remove:    event.Remove,
 			Key:       event.Key,
 			Value:     event.Value,
 		})
