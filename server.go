@@ -32,25 +32,25 @@ type ServerEvent struct {
 	Ts    time.Time
 	Event string
 
-	Nick string
-	Msg  string
+	Nick string ",omitempty"
+	Msg  string ",omitempty"
 
 	// these fields for the player events
-	Auth string
-	Uid  string
-	Uids []string
+	Auth string   ",omitempty"
+	Uid  string   ",omitempty"
+	Uids []string ",omitempty"
 
 	// deprecated
-	Username  string
-	Usernames []string
-	Key       string
+	Username  string   ",omitempty"
+	Usernames []string ",omitempty"
+	Key       string   ",omitempty"
 
 	// these fields for the settings_changed events
-	Actor  string
-	Set    string
-	Add    string
-	Remove string
-	Value  string
+	Actor  string ",omitempty"
+	Set    string ",omitempty"
+	Add    string ",omitempty"
+	Remove string ",omitempty"
+	Value  string ",omitempty"
 }
 
 type ServerSettings struct {

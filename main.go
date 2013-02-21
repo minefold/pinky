@@ -70,6 +70,7 @@ var (
 	portPool    chan int
 	plog        DataLogger // pinky logger	
 	jobPopper   *JobPopper
+	mlog        *MongoLogger
 )
 
 func serverPath(serverId string) string {
@@ -247,6 +248,8 @@ func processServerEvents(serverId string, events chan ServerEvent, attached bool
 			server.Kill(syscall.SIGKILL)
 			go server.EnsureServerStopped()
 		}
+
+		mlog.ServerEvent(serverId, event)
 
 		pushServerEvent(PinkyServerEvent{
 			PinkyId:   boxId,
@@ -793,6 +796,12 @@ func main() {
 		fmt.Println("ERMAHGERD FERTEL ERRERRRR! ಠ_ಠ")
 		panic(r)
 	}
+	var err error
+	mlog, err = NewMongoLogger()
+	if err != nil {
+		panic(fmt.Sprintf("Failed to init MongoLogger: %v", err))
+	}
+	defer mlog.Close()
 
 	wipGen = NewWipGenerator()
 
