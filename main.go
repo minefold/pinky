@@ -334,6 +334,7 @@ func stopServer(serverId string) {
 
 		server.Stop()
 	} else {
+		removeServerArtifacts(serverId)
 		plog.Info(map[string]interface{}{
 			"event":    "stop_request_ignored",
 			"reason":   "server not found",
