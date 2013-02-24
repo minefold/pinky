@@ -27,39 +27,6 @@ type RedisServerInfo struct {
 	Port int `json:"port"`
 }
 
-type PinkyServerEvent struct {
-	Ts       time.Time `json:"ts"`
-	PinkyId  string    `json:"pinky_id"`
-	ServerId string    `json:"server_id"`
-	Type     string    `json:"type"`
-
-	// Chat
-	Msg  string `json:"msg"`
-	Nick string `json:"nick"`
-
-	// these fields for the backed_up event
-	SnapshotId string `json:"snapshot_id"`
-	Url        string `json:"url"`
-	Size       int64  `json:"size"`
-
-	// these fields for the player events
-	Auth string   `json:"auth"`
-	Uids []string `json:"uids"`
-	Uid  string   `json:"uid"`
-
-	// Deprecated
-	Username  string   `json:"username"`
-	Usernames []string `json:"usernames"`
-	Key       string   `json:"key"`
-
-	// these fields for the settings_changed events
-	Actor  string `json:"actor"`
-	Add    string `json:"add"`
-	Remove string `json:"remove"`
-	Set    string `json:"set"`
-	Value  string `json:"value"`
-}
-
 // Globals. Probably a bad idea
 var (
 	redisClient *redis.Client
@@ -156,11 +123,11 @@ func startServer(serverId string, funpackId string, funpackUrl string,
 			"reason": "already started",
 			"server": serverId,
 		})
-		pushServerEvent(PinkyServerEvent{
-			PinkyId:  boxId,
-			ServerId: serverId,
-			Ts:       time.Now(),
-			Type:     "started",
+		pushPinkyEvent(map[string]interface{}{
+			"ts":        time.Now(),
+			"server_id": serverId,
+			"event":     "server_event",
+			"type":      "started",
 		})
 	}
 	return nil
@@ -235,7 +202,7 @@ func processServerEvents(serverId string, events chan ServerEvent, attached bool
 	server := servers.Get(serverId)
 
 	for event := range events {
-		switch event.Event {
+		switch event.Type() {
 		case "started":
 			server.State = "up"
 		case "stopping":
@@ -243,33 +210,15 @@ func processServerEvents(serverId string, events chan ServerEvent, attached bool
 				server.State = "stopping"
 				stopWip = <-wipGen.C
 			}
-
 		case "fatal_error":
-			server.Kill(syscall.SIGKILL)
 			go server.EnsureServerStopped()
 		}
 
 		mlog.ServerEvent(serverId, event)
 
-		pushServerEvent(PinkyServerEvent{
-			PinkyId:   boxId,
-			ServerId:  serverId,
-			Ts:        event.Ts,
-			Type:      event.Event,
-			Nick:      event.Nick,
-			Msg:       event.Msg,
-			Auth:      event.Auth,
-			Uid:       event.Uid,
-			Uids:      event.Uids,
-			Usernames: event.Usernames,
-			Username:  event.Username,
-			Actor:     event.Actor,
-			Set:       event.Set,
-			Add:       event.Add,
-			Remove:    event.Remove,
-			Key:       event.Key,
-			Value:     event.Value,
-		})
+		if event.Type() != "info" {
+			pushServerEvent(serverId, event)
+		}
 	}
 
 	plog.Info(map[string]interface{}{
@@ -312,16 +261,11 @@ func processServerEvents(serverId string, events chan ServerEvent, attached bool
 		servers.Del(serverId)
 	}
 
-	pushServerEvent(PinkyServerEvent{
-		PinkyId:  boxId,
-		ServerId: serverId,
-		Ts:       time.Now(),
-		Type:     "stopped",
-	})
-
-	plog.Info(map[string]interface{}{
-		"event":    "server_stopped",
-		"serverId": serverId,
+	pushPinkyEvent(map[string]interface{}{
+		"ts":        time.Now(),
+		"server_id": serverId,
+		"event":     "server_event",
+		"type":      "stopped",
 	})
 }
 
@@ -370,14 +314,14 @@ func backupServer(serverId string, backupTime time.Time) (err error) {
 		return err
 	})
 
-	pushServerEvent(PinkyServerEvent{
-		Ts:         backupTime,
-		PinkyId:    boxId,
-		ServerId:   serverId,
-		Type:       "backed_up",
-		SnapshotId: snapshotId.Hex(),
-		Url:        url,
-		Size:       size,
+	pushPinkyEvent(map[string]interface{}{
+		"ts":          time.Now(),
+		"server_id":   serverId,
+		"event":       "server_event",
+		"type":        "backed_up",
+		"snapshot_id": snapshotId.Hex(),
+		"url":         url,
+		"size":        size,
 	})
 
 	return
@@ -395,11 +339,11 @@ func stopServer(serverId string) {
 			"reason":   "server not found",
 			"serverId": serverId,
 		})
-		pushServerEvent(PinkyServerEvent{
-			PinkyId:  boxId,
-			ServerId: serverId,
-			Ts:       time.Now(),
-			Type:     "stopped",
+		pushPinkyEvent(map[string]interface{}{
+			"ts":        time.Now(),
+			"server_id": serverId,
+			"event":     "server_event",
+			"type":      "stopped",
 		})
 	}
 }
@@ -455,28 +399,28 @@ func handleRedisError(err error) {
 	}
 }
 
-func pushServerEvent(event PinkyServerEvent) {
-	plog.Info(map[string]interface{}{
-		"ts":          event.Ts,
-		"event":       "server_event",
-		"serverId":    event.ServerId,
-		"serverEvent": event.Type,
-		"nick":        event.Nick,
-		"msg":         event.Msg,
-		"snapshotId":  event.SnapshotId,
-		"url":         event.Url,
-		"size":        event.Size,
-		"auth":        event.Auth,
-		"uid":         event.Uid,
-		"uids":        event.Uids,
-		"username":    event.Username,
-		"usernames":   event.Usernames,
-		"actor":       event.Actor,
-		"key":         event.Key,
-		"value":       event.Value,
-	})
+func pushServerEvent(serverId string, serverEvent ServerEvent) {
+	event := map[string]interface{}{
+		"event":     "server_event",
+		"server_id": serverId,
+		"type":      serverEvent.Type(),
+	}
+	for k, v := range serverEvent {
+		if k != "event" && v != nil {
+			event[k] = v
+		}
+	}
+
+	pushPinkyEvent(event)
+}
+
+func pushPinkyEvent(event map[string]interface{}) {
+	plog.Info(event)
+
+	event["pinky_id"] = boxId
 
 	pseJson, _ := json.Marshal(event)
+
 	redisClient.Lpush("server:events", pseJson)
 }
 
@@ -580,11 +524,11 @@ func processJobs(jobChannel chan Job) {
 				"reason": "pinky is stopping",
 				"job":    job,
 			})
-			pushServerEvent(PinkyServerEvent{
-				PinkyId:  boxId,
-				ServerId: job.ServerId,
-				Ts:       time.Now(),
-				Type:     "stopped",
+			pushPinkyEvent(map[string]interface{}{
+				"ts":        time.Now(),
+				"server_id": job.ServerId,
+				"event":     "server_event",
+				"type":      "stopped",
 			})
 			continue
 		}
@@ -622,11 +566,11 @@ func processJobs(jobChannel chan Job) {
 						"event":  "server_start_error",
 						"server": job.ServerId,
 					})
-					pushServerEvent(PinkyServerEvent{
-						PinkyId:  boxId,
-						ServerId: job.ServerId,
-						Ts:       time.Now(),
-						Type:     "stopped",
+					pushPinkyEvent(map[string]interface{}{
+						"ts":        time.Now(),
+						"server_id": job.ServerId,
+						"event":     "server_event",
+						"type":      "stopped",
 					})
 				}
 
@@ -758,11 +702,11 @@ func cleanOldServers() error {
 				"event":    "dead_server_removed",
 				"serverId": serverId,
 			})
-			pushServerEvent(PinkyServerEvent{
-				PinkyId:  boxId,
-				ServerId: serverId,
-				Ts:       time.Now(),
-				Type:     "stopped",
+			pushPinkyEvent(map[string]interface{}{
+				"ts":       time.Now(),
+				"serverId": serverId,
+				"event":    "server_event",
+				"type":     "stopped",
 			})
 		}
 	}

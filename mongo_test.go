@@ -39,7 +39,8 @@ func TestFirstSnapshot(t *testing.T) {
 
 	backupTime := time.Now()
 	url := "https://party-cloud-development.s3.amazonaws.com/worlds/1234.1.tar.lzo"
-	_, err = StoreBackupInMongo(serverId.Hex(), url, backupTime)
+	size := int64(789)
+	_, err = StoreBackupInMongo(serverId.Hex(), url, size, backupTime)
 
 	if err != nil {
 		t.Error(err)
@@ -79,11 +80,11 @@ func TestSecondSnapshot(t *testing.T) {
 	db.C("servers").Insert(bson.M{
 		"_id": serverId,
 	})
-	_, err = StoreBackupInMongo(serverId.Hex(), "1", time.Now())
+	_, err = StoreBackupInMongo(serverId.Hex(), "1", 123, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = StoreBackupInMongo(serverId.Hex(), "2", time.Now())
+	_, err = StoreBackupInMongo(serverId.Hex(), "2", 456, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}

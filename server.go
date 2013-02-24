@@ -28,30 +28,30 @@ type Server struct {
 	FunpackId string
 }
 
-type ServerEvent struct {
-	Ts    time.Time
-	Event string
-
-	Nick string ",omitempty"
-	Msg  string ",omitempty"
-
-	// these fields for the player events
-	Auth string   ",omitempty"
-	Uid  string   ",omitempty"
-	Uids []string ",omitempty"
-
-	// deprecated
-	Username  string   ",omitempty"
-	Usernames []string ",omitempty"
-	Key       string   ",omitempty"
-
-	// these fields for the settings_changed events
-	Actor  string ",omitempty"
-	Set    string ",omitempty"
-	Add    string ",omitempty"
-	Remove string ",omitempty"
-	Value  string ",omitempty"
-}
+// type ServerEvent struct {
+// 	Ts    time.Time
+// 	Event string
+// 
+// 	Nick string ",omitempty"
+// 	Msg  string ",omitempty"
+// 
+// 	// these fields for the player events
+// 	Auth string   ",omitempty"
+// 	Uid  string   ",omitempty"
+// 	Uids []string ",omitempty"
+// 
+// 	// deprecated
+// 	Username  string   ",omitempty"
+// 	Usernames []string ",omitempty"
+// 	Key       string   ",omitempty"
+// 
+// 	// these fields for the settings_changed events
+// 	Actor  string ",omitempty"
+// 	Set    string ",omitempty"
+// 	Add    string ",omitempty"
+// 	Remove string ",omitempty"
+// 	Value  string ",omitempty"
+// }
 
 type ServerSettings struct {
 	Id        string        `json:"id"`
@@ -119,7 +119,7 @@ func (s *Server) processStdout(c chan ServerEvent) {
 	line, isPrefix, err := r.ReadLine()
 
 	for err == nil && !isPrefix {
-		event, parseErr := s.parseEvent(line)
+		event, parseErr := ParseServerEvent(line)
 		if parseErr == nil {
 			c <- event
 		} else {
@@ -183,7 +183,7 @@ func (s *Server) Monitor() (chan ServerEvent, error) {
 
 	go func() {
 		for event := range eventsIn {
-			switch event.Event {
+			switch event.Type() {
 			case "stopping":
 				go s.EnsureServerStopped()
 			}
@@ -246,11 +246,6 @@ func (s *Server) EnsureServerStopped() {
 		}
 		time.Sleep(5 * time.Second)
 	}
-}
-
-func (s *Server) parseEvent(line []byte) (event ServerEvent, err error) {
-	err = json.Unmarshal(line, &event)
-	return
 }
 
 func (s *Server) Stop() {

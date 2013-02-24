@@ -73,9 +73,22 @@ func printLogMessageHuman(data map[string]interface{}) {
 	attrs := make([]string, 0)
 
 	for k, v := range data {
-		if k != "ts" && k != "level" && k != "event" {
+		if k != "ts" && k != "level" && k != "event" && v != nil {
+			var s string
+			switch v.(type) {
+			case *json.RawMessage:
+				msg := v.(*json.RawMessage)
+				if msg != nil {
+					var m interface{}
+					json.Unmarshal(*msg, &m)
+					s = fmt.Sprintf("%v", m)
+				}
 
-			if s := fmt.Sprintf("%v", v); s != "" && s != "[]" {
+			default:
+				s = fmt.Sprintf("%v", v)
+			}
+
+			if s != "" {
 				if strings.Contains(s, " ") {
 					s = strconv.Quote(s)
 				}

@@ -30,7 +30,7 @@ func (l *MongoLogger) ServerEvent(serverId string, event ServerEvent) (err error
 	// TODO: might be faster to know if a collection exists or not
 	collection.Create(&mgo.CollectionInfo{
 		Capped:   true,
-		MaxBytes: 50 * 1024, // TODO: review this log size
+		MaxBytes: 500 * 1024, // TODO: review this log size
 	})
 
 	collection.Insert(event)

@@ -67,8 +67,8 @@ func TestStartAndStop(t *testing.T) {
 
 	ev := <-events
 
-	if ev.Event != "started" {
-		t.Errorf("want %q, got %q", "started", ev.Event)
+	if ev.Type() != "started" {
+		t.Errorf("want %q, got %q", "started", ev.Type())
 	}
 
 	s.Stop()

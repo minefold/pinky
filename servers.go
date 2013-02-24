@@ -45,11 +45,11 @@ func (s *Servers) Tick() {
 	for _ = range minute.C {
 		for _, server := range s.s {
 			if server.State == "up" {
-				pushServerEvent(PinkyServerEvent{
-					PinkyId:  boxId,
-					ServerId: server.Id,
-					Ts:       time.Now(),
-					Type:     "minute",
+				pushPinkyEvent(map[string]interface{}{
+					"ts":        time.Now(),
+					"server_id": server.Id,
+					"event":     "server_event",
+					"type":      "minute",
 				})
 			}
 		}
