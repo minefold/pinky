@@ -13,7 +13,16 @@ func ParseServerEvent(line []byte) (event ServerEvent, err error) {
 
 func (e *ServerEvent) Type() string {
 	var str string
-	var event = *e
-	json.Unmarshal(*event["event"], &str)
+	json.Unmarshal(*(*e)["event"], &str)
 	return str
+}
+
+func (e *ServerEvent) Map() map[string][]byte {
+	doc := map[string][]byte{}
+	for k, v := range *e {
+		var str []byte
+		json.Unmarshal(*v, &str)
+		doc[k] = str
+	}
+	return doc
 }
