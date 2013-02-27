@@ -7,6 +7,8 @@
 # will compress and upload current directory based on file extension
 # handles tar|tar.gz|tar.lzo
 
+trap('QUIT', 'IGNORE') # ignore pinky quit signal so operation will complete
+
 require 'tempfile'
 
 S3CURL = File.expand_path File.join __FILE__, '../s3curl'

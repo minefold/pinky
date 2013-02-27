@@ -8,6 +8,8 @@
 # handles tar|tar.gz|tar.lzo
 # ex. restore-file
 
+trap('QUIT', 'IGNORE') # ignore pinky quit signal so operation will complete
+
 S3CURL = File.expand_path File.join __FILE__, '../s3curl'
 
 REMOTE = ARGV.shift
