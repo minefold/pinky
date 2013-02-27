@@ -27,6 +27,11 @@ type RedisServerInfo struct {
 	Port int `json:"port"`
 }
 
+type StartServerError struct {
+	error
+	Type string
+}
+
 // Globals. Probably a bad idea
 var (
 	redisClient *redis.Client
@@ -76,12 +81,12 @@ func startServer(serverId string, funpackId string, funpackUrl string,
 		if worldUrl != "" {
 			err := server.DownloadWorld(worldUrl)
 			if err != nil {
-				return err
+				return errors.New("download_world_error: " + err.Error())
 			}
 		}
 		err := server.DownloadFunpack(funpackId, funpackUrl, worldUrl != "")
 		if err != nil {
-			return err
+			return errors.New("download_funpack_error: " + err.Error())
 		}
 
 		// TODO: remove when we're no longer using settings
@@ -95,12 +100,12 @@ func startServer(serverId string, funpackId string, funpackUrl string,
 
 		pid, err := server.StartServerProcess(pidFile)
 		if err != nil {
-			return err
+			return errors.New("start_process_error: " + err.Error())
 		}
 
 		events, err := server.Monitor()
 		if err != nil {
-			return err
+			return errors.New("monitor_process_error: " + err.Error())
 		}
 
 		go processServerEvents(serverId, events, false)
@@ -111,7 +116,7 @@ func startServer(serverId string, funpackId string, funpackUrl string,
 		}
 		serverJson, err := json.Marshal(serverInfo)
 		if err != nil {
-			return err
+			return errors.New("marshal_serverinfo_error: " + err.Error())
 		}
 		redisClient.Set(
 			fmt.Sprintf("pinky:%s:servers:%s", boxId, serverId),
