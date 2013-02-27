@@ -234,28 +234,33 @@ func processServerEvents(serverId string, events chan ServerEvent, attached bool
 	stopTicks <- true
 	stopBackups <- true
 
-	if hasWorld && servers.Get(serverId).State != "starting" {
-		plog.Info(map[string]interface{}{
-			"event":    "shutdown_backup_starting",
-			"serverId": serverId,
-		})
-		err := backupServer(serverId, time.Now())
-		if err != nil {
-			// TODO figure out some recovery scenario
-			plog.Error(errors.New("Shutdown backup failed"), map[string]interface{}{
-				"event":    "shutdown_backup_failed",
+	// TODO figure out why we have to check for nil. Server should exist
+	// already
+	if server := servers.Get(serverId); server != nil {
+		if hasWorld && servers.Get(serverId).State != "starting" {
+			plog.Info(map[string]interface{}{
+				"event":    "shutdown_backup_starting",
+				"serverId": serverId,
+			})
+			err := backupServer(serverId, time.Now())
+			if err != nil {
+				// TODO figure out some recovery scenario
+				plog.Error(errors.New("Shutdown backup failed"), map[string]interface{}{
+					"event":    "shutdown_backup_failed",
+					"serverId": serverId,
+				})
+			}
+			plog.Info(map[string]interface{}{
+				"event":    "shutdown_backup_completed",
 				"serverId": serverId,
 			})
 		}
-		plog.Info(map[string]interface{}{
-			"event":    "shutdown_backup_completed",
-			"serverId": serverId,
-		})
 	}
 
 	removeServerArtifacts(serverId)
 
-	// Not sure why this is happening:
+	// TODO figure out why we have to check for nil. Server should exist
+	// already
 	if server := servers.Get(serverId); server != nil {
 		portPool <- server.Port
 		servers.Del(serverId)
@@ -704,10 +709,10 @@ func cleanOldServers() error {
 				"serverId": serverId,
 			})
 			pushPinkyEvent(map[string]interface{}{
-				"ts":       time.Now(),
-				"serverId": serverId,
-				"event":    "server_event",
-				"type":     "stopped",
+				"ts":        time.Now(),
+				"server_id": serverId,
+				"event":     "server_event",
+				"type":      "stopped",
 			})
 		}
 	}

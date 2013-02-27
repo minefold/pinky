@@ -415,7 +415,7 @@ func (s *Server) DownloadFunpack(funpackId string, funpackUrl string, testWorld 
 	if fileExists(s.funpackPath("Gemfile")) {
 		cmd := exec.Command("bundle", "install", "--deployment")
 		cmd.Dir = s.funpackPath()
-		output, err := cmd.Output()
+		output, err := cmd.CombinedOutput()
 		if err != nil {
 			plog.Error(err, map[string]interface{}{
 				"event":  "bundle_install_failed",
@@ -516,7 +516,7 @@ func (s *Server) funpackCmd(bin string, args ...string) *exec.Cmd {
 }
 
 func (s *Server) backupPaths() ([]string, error) {
-	info, err := s.funpackCmd("import").Output()
+	info, err := s.funpackCmd("import").CombinedOutput()
 	if err != nil {
 		plog.Error(err, map[string]interface{}{
 			"event":  "funpack_import_failed",
