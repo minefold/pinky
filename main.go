@@ -144,9 +144,11 @@ func runBackups(stop chan bool, serverId string) {
 	for {
 		select {
 		case <-ticker.C:
-			jobPopper.C <- Job{
-				Name:     "backup",
-				ServerId: serverId,
+			if !jobPopper.Stopped {
+				jobPopper.C <- Job{
+					Name:     "backup",
+					ServerId: serverId,
+				}
 			}
 
 		case <-stop:

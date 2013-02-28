@@ -3,7 +3,7 @@ Vagrant::Config.run do |config|
 
   config.vm.network :hostonly, "10.10.10.15"
 
-  config.vm.customize ["modifyvm", :id, "--memory", 1024 * 5]
+  config.vm.customize ["modifyvm", :id, "--memory", 1024 * 2]
 
   # config.vm.boot_mode = :gui
 

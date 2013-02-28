@@ -27,7 +27,7 @@ type Job struct {
 
 type JobPopper struct {
 	C       chan Job
-	stopped bool
+	Stopped bool
 }
 
 func NewJobPopper(name string) *JobPopper {
@@ -39,7 +39,7 @@ func NewJobPopper(name string) *JobPopper {
 }
 
 func (p *JobPopper) Stop() {
-	p.stopped = true
+	p.Stopped = true
 }
 
 func (p *JobPopper) process(name string) {
@@ -47,7 +47,7 @@ func (p *JobPopper) process(name string) {
 	defer client.Quit()
 	defer close(p.C)
 
-	for !p.stopped {
+	for !p.Stopped {
 		reply, e := client.Brpop([]string{name}, 5)
 		if e == nil {
 			val := reply.BytesArray()[1]
