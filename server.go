@@ -34,7 +34,7 @@ type ServerSettings struct {
 	Funpack   string        `json:"funpack"`
 	Port      int           `json:"port"`
 	Ram       RamAllocation `json:"ram"`
-	Data      string        `json:"settings"`
+	Data      *string       `json:"settings"`
 }
 
 type BackupInfo struct {
@@ -69,7 +69,7 @@ func (s *Server) WriteSettingsFile(
 		Funpack: funpackUrl,
 		Port:    s.Port,
 		Ram:     ram,
-		Data:    data,
+		Data:    &data,
 	}
 	serverJson, err := json.Marshal(server)
 	if err != nil {
