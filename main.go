@@ -217,7 +217,7 @@ func processServerEvents(serverId string, events chan ServerEvent, attached bool
 
 		mlog.ServerEvent(serverId, event)
 
-		fmt.Println("[DEBUG]:", event.Map())
+		fmt.Println("[DEBUG]:", serverId, event.Map())
 
 		if event.Type() != "info" {
 			pushServerEvent(serverId, event)

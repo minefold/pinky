@@ -20,9 +20,11 @@ func (e *ServerEvent) Type() string {
 func (e *ServerEvent) Map() map[string]string {
 	doc := map[string]string{}
 	for k, v := range *e {
-		var str string
-		json.Unmarshal(*v, &str)
-		doc[k] = str
+		if v != nil {
+			var str string
+			json.Unmarshal(*v, &str)
+			doc[k] = str
+		}
 	}
 	return doc
 }
