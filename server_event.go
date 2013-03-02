@@ -17,10 +17,10 @@ func (e *ServerEvent) Type() string {
 	return str
 }
 
-func (e *ServerEvent) Map() map[string][]byte {
-	doc := map[string][]byte{}
+func (e *ServerEvent) Map() map[string]string {
+	doc := map[string]string{}
 	for k, v := range *e {
-		var str []byte
+		var str string
 		json.Unmarshal(*v, &str)
 		doc[k] = str
 	}

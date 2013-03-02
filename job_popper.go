@@ -20,9 +20,6 @@ type Job struct {
 
 	// for tell & kick
 	Username string
-
-	// TODO deprecate
-	Settings interface{}
 }
 
 type JobPopper struct {

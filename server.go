@@ -28,38 +28,13 @@ type Server struct {
 	FunpackId string
 }
 
-// type ServerEvent struct {
-// 	Ts    time.Time
-// 	Event string
-// 
-// 	Nick string ",omitempty"
-// 	Msg  string ",omitempty"
-// 
-// 	// these fields for the player events
-// 	Auth string   ",omitempty"
-// 	Uid  string   ",omitempty"
-// 	Uids []string ",omitempty"
-// 
-// 	// deprecated
-// 	Username  string   ",omitempty"
-// 	Usernames []string ",omitempty"
-// 	Key       string   ",omitempty"
-// 
-// 	// these fields for the settings_changed events
-// 	Actor  string ",omitempty"
-// 	Set    string ",omitempty"
-// 	Add    string ",omitempty"
-// 	Remove string ",omitempty"
-// 	Value  string ",omitempty"
-// }
-
 type ServerSettings struct {
 	Id        string        `json:"id"`
 	FunpackId string        `json:"funpackId"`
 	Funpack   string        `json:"funpack"`
 	Port      int           `json:"port"`
 	Ram       RamAllocation `json:"ram"`
-	Settings  interface{}   `json:"settings"`
+	Data      string        `json:"settings"`
 }
 
 type BackupInfo struct {
@@ -81,6 +56,28 @@ func AttachServer(id, path string, pid, port int) (*Server, error) {
 	s.FunpackId = settings.FunpackId
 	s.State = "up"
 	return s, nil
+}
+
+func (s *Server) WriteSettingsFile(
+	funpackId string,
+	funpackUrl string,
+	ram RamAllocation,
+	data string) error {
+
+	server := ServerSettings{
+		Id:      s.Id,
+		Funpack: funpackUrl,
+		Port:    s.Port,
+		Ram:     ram,
+		Data:    data,
+	}
+	serverJson, err := json.Marshal(server)
+	if err != nil {
+		return err
+	}
+
+	ioutil.WriteFile(s.SettingsFile(), serverJson, 0644)
+	return nil
 }
 
 func ReadServerSettings(path string) (*ServerSettings, error) {
@@ -313,29 +310,6 @@ func execWithOutput(cmd *exec.Cmd, outWriter io.Writer, errWriter io.Writer) (er
 
 	err = cmd.Wait()
 	return
-}
-
-// TODO: deprecate
-func (s *Server) WriteSettingsFile(
-	funpackId string,
-	funpackUrl string,
-	ram RamAllocation,
-	settings interface{}) error {
-
-	server := ServerSettings{
-		Id:       s.Id,
-		Funpack:  funpackUrl,
-		Port:     s.Port,
-		Ram:      ram,
-		Settings: settings,
-	}
-	serverJson, err := json.Marshal(server)
-	if err != nil {
-		return err
-	}
-
-	ioutil.WriteFile(s.SettingsFile(), serverJson, 0644)
-	return nil
 }
 
 func (s *Server) WriteDataFile(data string) error {

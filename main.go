@@ -54,8 +54,7 @@ func pidFile(serverId string) string {
 }
 
 func startServer(serverId string, funpackId string, funpackUrl string,
-	worldUrl string, ram RamAllocation,
-	settings interface{}, data string) error {
+	worldUrl string, ram RamAllocation, data string) error {
 	if !servers.Exists(serverId) {
 
 		port := <-portPool
@@ -89,12 +88,7 @@ func startServer(serverId string, funpackId string, funpackUrl string,
 			return errors.New("download_funpack_error: " + err.Error())
 		}
 
-		// TODO: remove when we're no longer using settings
-		server.WriteSettingsFile(
-			funpackId,
-			funpackUrl,
-			ram,
-			settings)
+		server.WriteSettingsFile(funpackId, funpackUrl, ram, data)
 
 		server.WriteDataFile(data)
 
@@ -222,6 +216,8 @@ func processServerEvents(serverId string, events chan ServerEvent, attached bool
 		}
 
 		mlog.ServerEvent(serverId, event)
+
+		fmt.Println("[DEBUG]:", event.Map())
 
 		if event.Type() != "info" {
 			pushServerEvent(serverId, event)
@@ -570,7 +566,6 @@ func processJobs(jobChannel chan Job) {
 					job.FunpackUrl,
 					job.WorldUrl,
 					job.Ram,
-					job.Settings,
 					job.Data)
 
 				if err != nil {

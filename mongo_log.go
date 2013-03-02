@@ -27,7 +27,7 @@ func NewMongoLogger() (l *MongoLogger, err error) {
 func (l *MongoLogger) ServerEvent(serverId string, event ServerEvent) (err error) {
 	collection := l.db.C(fmt.Sprintf("logs_%s", serverId))
 
-	// TODO: might be faster to know if a collection exists or not
+	// TODO: might be faster lookup to check if a collection exists or not
 	collection.Create(&mgo.CollectionInfo{
 		Capped:   true,
 		MaxBytes: 500 * 1024, // TODO: review this log size
