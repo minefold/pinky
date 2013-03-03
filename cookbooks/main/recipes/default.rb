@@ -1,7 +1,3 @@
-execute "apt-get update" do
-  command "apt-get update"
-end
-
 %w(
   build-essential
   ruby1.9.1
@@ -25,6 +21,7 @@ end
   expect-dev
 
   golang-go
+  lxc
   ).each do |pkg|
   package pkg
 end
@@ -43,14 +40,12 @@ package 'python-software-properties'
 
 execute "apt-get purge openjdk*" do
   command "apt-get purge openjdk*"
+  not_if 'java -version 2>&1 | grep 1.7'
 end
 
 execute "add-apt-repository ppa:webupd8team/java" do
-  command "add-apt-repository ppa:webupd8team/java"
-end
-
-execute "apt-get update" do
-  command "apt-get update"
+  command "add-apt-repository -y ppa:webupd8team/java && apt-get update"
+  not_if 'java -version 2>&1 | grep 1.7'
 end
 
 package 'oracle-java7-installer'

@@ -1,3 +1,6 @@
 source :rubygems
 
-gem 'vagrant'
+group :development do
+  gem 'berkshelf'
+  gem 'vagrant'
+end

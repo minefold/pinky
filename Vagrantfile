@@ -1,5 +1,8 @@
+require 'berkshelf/vagrant'
+
 Vagrant::Config.run do |config|
-  config.vm.box = "base"
+  config.vm.box = "quantal"
+  config.vm.host_name = "pinky"
 
   config.vm.network :hostonly, "10.10.10.15"
 
@@ -13,15 +16,13 @@ Vagrant::Config.run do |config|
   end
 
   config.vm.provision :chef_solo do |chef|
-    # chef.cookbooks_path = [
-    #   "cookbooks",
-    #   "~/code/minefold/cookbooks"]
+    chef.json = {}
 
-    chef.add_recipe "main"
-    # chef.add_recipe "golang"
-    # chef.add_recipe "java"
-    chef.add_recipe "party-cloud"
-    chef.add_recipe "party-cloud::bootstrap"
+    chef.run_list = [
+      "recipe[apt]",
+      "recipe[main]",
+      "recipe[party-cloud]",
+      "recipe[party-cloud::bootstrap]",
+    ]
   end
-
 end
