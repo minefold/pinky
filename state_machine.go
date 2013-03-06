@@ -8,6 +8,7 @@ import (
 type MachineState interface {
 	Enter(machine *StateMachine)
 	Exit()
+	Name() string
 }
 
 type StateMachine struct {
@@ -46,11 +47,12 @@ func (m *StateMachine) Event(name string) error {
 func (m *StateMachine) To(to MachineState) {
 	if m.State != nil {
 		m.State.Exit()
+		fmt.Println("State changed from", m.State.Name(), "to", to.Name())
 	}
+	m.State = to
 	if to != nil {
 		to.Enter(m)
 	}
-	m.State = to
 }
 
 func (m *StateMachine) transitionToFirstMatching(t Transitions, name string) error {
@@ -61,7 +63,6 @@ func (m *StateMachine) transitionToFirstMatching(t Transitions, name string) err
 		return nil
 	}
 	if l == 0 {
-		fmt.Println(t)
 		return errors.New("No transition available")
 	}
 	return errors.New("Multiple transitions available")

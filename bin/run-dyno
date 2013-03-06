@@ -4,9 +4,12 @@ set -e
 set -o pipefail
 
 dyno_id=$1
+dyno_user="u9150"
 run_command=$2
 mounts=(${@:3})
-user="u$dyno_id"
+ps_run=$(cd $(dirname $0)/../container/ps-run && pwd)
+
+echo $ps_run
 
 dyno_dir=$LXC_DIR/$dyno_id
 
@@ -47,7 +50,6 @@ EOF
 echo "Setting up mounts"
 
 for mount in "${mounts[@]}"; do
-
   mount_point=${mount%%:*};
   mount_url=${mount#*:};
 
@@ -55,27 +57,14 @@ for mount in "${mounts[@]}"; do
   mkdir -p $dyno_dir/rootfs/$mount_point
 
   echo "Fetching $mount_url"
-  # support protocols file/// and http://
-  # extract the gzipped tar, dont bother with squashfs
-  #if s3url starts with http
-  if [[ "$mount_url" == http* ]]; then
-    echo "Fetching mount $mount_url"
-    curl -L $mount_url | tar -z -x -C "$dyno_dir/rootfs/$mount_point"
-  fi
-
-  if [[ "$mount_url" == file* ]]; then
-    echo "assets/${mount_url#*//}"
-    cat assets/${mount_url#*//} | tar -z -x -C "$dyno_dir/rootfs/$mount_point"
-  fi
-  #else
-  #GIT_CHECKOUTDIR=$mountdir git clone $s3url
+  cd "$dyno_dir/rootfs/$mount_point"
+  restore-dir $mount_url
+  cd -
   
   # reset perms to devil uid/guid to avoid setuid/setgid attacks
   chown -R 1666.666 "$dyno_dir/rootfs/$mount_point"
-
   chmod -R u-s "$dyno_dir/rootfs/$mount_point"
   chmod -R g-s "$dyno_dir/rootfs/$mount_point"
-
 done
 
 echo "Setting up devices"
@@ -118,7 +107,7 @@ ftp:x:14:11:ftp:/srv/ftp:/bin/false
 http:x:33:33:http:/srv/http:/bin/false
 uuidd:x:68:68:uuidd:/:/sbin/nologin
 nobody:x:99:99:nobody:/:/bin/false
-$user:x:1666:666:guest user:/app:/bin/bash
+$dyno_user:x:1666:666:guest user:/app:/bin/bash
 PASSWD
 
 cat <<GROUP >$LXC_DIR/$dyno_id/rootfs/etc/group
@@ -155,7 +144,7 @@ scanner:x:96:
 power:x:98:
 nobody:x:99:
 users:x:100:
-$user:x:666:$user
+$dyno_user:x:666:$dyno_user
 GROUP
 
 fstemplate=default
@@ -171,6 +160,7 @@ none $dyno_dir/rootfs/dev/shm tmpfs defaults 0 0
 /lib $dyno_dir/rootfs/lib none bind 0 0
 /etc/ssl $dyno_dir/rootfs/etc/ssl none bind 0 0
 /etc/alternatives $dyno_dir/rootfs/etc/alternatives none bind 0 0
+$ps_run $dyno_dir/rootfs/root/ps-run none bind 0 0
 FSCONFIG
 
 # Only mount /lib64 on 64bit machines
@@ -182,6 +172,9 @@ fi
 #   echo "$CODONHOOKS_PATH $dyno_dir/rootfs/app/hooks none bind 0 0" >> $dyno_dir/fstab
 # fi
 
+cp container/etc/profile $dyno_dir/rootfs/etc
+
 echo "Starting dyno"
 cp bin/run-dyno $dyno_dir/rootfs
-lxc-start --name $dyno_id --logpriority DEBUG --rcfile $LXC_DIR/$dyno_id/config $run_command
+cd $dyno_dir/rootfs/working
+lxc-start --name $dyno_id --logpriority DEBUG --rcfile $LXC_DIR/$dyno_id/config /root/ps-run/nodeboot $run_command

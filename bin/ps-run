@@ -1,8 +1,0 @@
-#!/usr/bin/env ruby
-
-require 'pty'
-
-Process::Sys.setuid(1666)
-
-PTY.spawn
-exec ARGV

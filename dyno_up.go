@@ -1,16 +1,21 @@
 package main
 
 import (
-	"fmt"
+	"io"
+	"os"
 )
 
 type DynoUp struct {
 	MachineState
+	Dyno *Dyno
 }
 
+func (s *DynoUp) Name() string { return "up" }
+
 func (s *DynoUp) Enter(machine *StateMachine) {
-	fmt.Println("idle - enter")
+	go io.Copy(os.Stdout, s.Dyno.stdout)
+	io.Copy(os.Stderr, s.Dyno.stderr)
 }
+
 func (s *DynoUp) Exit() {
-	fmt.Println("idle - exit")
 }

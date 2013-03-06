@@ -1,16 +1,14 @@
 package main
 
-import (
-	"fmt"
-)
+import ()
 
 type DynoCrashed struct {
 	MachineState
 }
 
+func (s *DynoCrashed) Name() string { return "crashed" }
+
 func (s *DynoCrashed) Enter(machine *StateMachine) {
-	fmt.Println("idle - enter")
 }
 func (s *DynoCrashed) Exit() {
-	fmt.Println("idle - exit")
 }

@@ -6,12 +6,13 @@ Pinky is a daemon process that starts, monitors and stops servers on a single in
 
 pinky <box-id>
 
-## Required ENV
+## ENV vars
 
-AWS_ACCESS_KEY=DLHDLKJHDLKJHDLKH
-AWS_SECRET_KEY=DSLKSJDHFLDKJHFLDSKJHFDSLKJHDLS
+AWS_ACCESS_KEY=
+AWS_SECRET_KEY=
 MONGO_URL=mongodb://10.0.2.2:27017/partycloud
 REDIS_URL=tcp:10.0.2.2:6379
+SERVERS_PATH
 
 ## How it works
 

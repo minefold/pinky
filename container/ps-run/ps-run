@@ -1,0 +1,30 @@
+#!/usr/bin/env ruby
+
+require 'pty'
+require 'rubygems'
+
+STDIN.sync = true
+STDOUT.sync = true
+
+Process::Sys.setgid(666)
+Process::Sys.setuid(1666)
+
+env = {
+  'TERM' => 'xterm-256color',
+  'HOME' => '/working',
+  'BUNDLE_GEMFILE' => '/funpack/Gemfile',
+  'SHARED_DIR' => '/shared',
+  'GEM_PATH' => '/funpack/vendor/bundle/ruby/1.9.1',
+  'PATH' => '/working/vendor/bundle/ruby/1.9.1/bin:/usr/local/bin:/usr/bin:/bin',
+  'PORT' => ENV['PORT'],
+  'DATA' => ENV['DATA'],
+  'RAM' => ENV['RAM'],
+}
+
+pid = Process.spawn(
+  env,
+  ARGV.join(' '),
+  unsetenv_others: true,
+  chdir: '/working',
+)
+Process.wait

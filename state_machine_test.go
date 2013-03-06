@@ -10,6 +10,7 @@ type TestIdleState struct {
 	t *testing.T
 }
 
+func (s *TestIdleState) Name() string { return "idle" }
 func (s *TestIdleState) Enter(m *StateMachine) {
 	s.t.Logf("idle - enter")
 }
@@ -24,6 +25,7 @@ type TestRunningState struct {
 	m *StateMachine
 }
 
+func (s *TestRunningState) Name() string { return "running" }
 func (s *TestRunningState) Enter(m *StateMachine) {
 	s.m = m
 	s.t.Logf("running - enter")
@@ -45,6 +47,7 @@ type TestErroredState struct {
 	t *testing.T
 }
 
+func (s *TestErroredState) Name() string { return "errored" }
 func (s *TestErroredState) Enter(m *StateMachine) {
 	s.t.Logf("errored - enter")
 }

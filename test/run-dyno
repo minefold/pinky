@@ -1,0 +1,8 @@
+#!/bin/bash
+
+export RAM=768
+export PORT=10000
+export LXC_DIR=/home/vagrant/lxc 
+export DATA="{\"name\":\"woody\",\"settings\":{\"ops\":\"whatupdave\"}}"
+
+bin/run-dyno "test-1" "/funpack/bin/run" "funpack:http://party-cloud-production.s3.amazonaws.com/funpacks/slugs/50a976ec7aae5741bb000001.tar.gz working:http://party-cloud-production.s3.amazonaws.com/worlds/51265a0726da4f000200003a/51265a0726da4f000200003a.1362528923.tar.lzo"

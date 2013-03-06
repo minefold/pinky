@@ -1,72 +1,64 @@
 package main
 
-// starting
-type StartingState struct {
-	MachineState
+import (
+	"io"
+	"os/exec"
+)
+
+type Dyno struct {
+	Id     string
+	Cmd    *exec.Cmd
+	Mounts map[string]string
+
+	m       *StateMachine
+	dynoCmd *exec.Cmd
+	stdout  io.ReadCloser
+	stderr  io.ReadCloser
 }
 
-func (s *StartingState) Enter(machine *StateMachine) {
-	fmt.Println("starting - enter")
-}
-func (s *StartingState) Exit() {
-	fmt.Println("starting - exit")
+func NewDyno(id string, cmd *exec.Cmd, mounts map[string]string) *Dyno {
+	dyno := &Dyno{
+		Id:     id,
+		Cmd:    cmd,
+		Mounts: mounts,
+	}
+
+	// states
+	down := &DynoDown{}
+	starting := &DynoStarting{Dyno: dyno}
+	up := &DynoUp{Dyno: dyno}
+	crashed := &DynoCrashed{}
+
+	// actions we send to the machine
+	actions := []Transition{
+		{Name: "start", From: down, To: starting},
+		{Name: "stop", From: up, To: down},
+	}
+
+	// events from the machine
+	events := []Transition{
+		{Name: "started", From: starting, To: up},
+		{Name: "exit", From: up, To: down},
+		{Name: "error", To: crashed},
+	}
+
+	m := &StateMachine{
+		Actions: actions,
+		Events:  events,
+	}
+	m.To(down)
+	dyno.m = m
+	return dyno
 }
 
-// running
-type RunningState struct {
-	MachineState
+func (d *Dyno) Start() {
+	if err := d.m.Action("start"); err != nil {
+		panic(err)
+	}
 }
 
-func (s *RunningState) Enter(machine *StateMachine) {
-	fmt.Println("running - enter")
+func (d *Dyno) Stop() {
+	if err := d.m.Action("stop"); err != nil {
+		panic(err)
+	}
 }
-func (s *RunningState) Exit() {
-	fmt.Println("running - exit")
-}
-
-// completed
-type CompletedState struct {
-	MachineState
-}
-
-func (s *CompletedState) Enter(machine *StateMachine) {
-	fmt.Println("completed - enter")
-}
-func (s *CompletedState) Exit() {
-	fmt.Println("completed - exit")
-}
-
-// errored
-type ErroredState struct {
-	MachineState
-}
-
-func (s *ErroredState) Enter(machine *StateMachine) {
-	fmt.Println("errored - enter")
-}
-func (s *ErroredState) Exit() {
-	fmt.Println("errored - exit")
-}
-// states
-idle := new(IdleState)
-starting := new(StartingState)
-listening := new(RunningState)
-running := new(RunningState)
-completed := new(CompletedState)
-errored := new(ErroredState)
-
-// actions we send to the machine
-actions := []Transition{
-	{Name: "start", From: idle, To: starting},
-	{Name: "run", From: listening, To: running},
-	{Name: "stop", To: completed},
-}
-
-// events from the machine
-events := []Transition{
-	{Name: "connected", From: starting, To: listening},
-	{Name: "exit", From: running, To: completed},
-	{Name: "error", To: errored},
-}
-
-tm := NewStateMachine(actions, events, idle)
