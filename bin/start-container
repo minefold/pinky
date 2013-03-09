@@ -4,25 +4,22 @@ set -e
 set -o pipefail
 
 dyno_id=$1
-dyno_user="u9150"
 run_command=$2
-mounts=(${@:3})
+socket_dir=$3
+mounts=(${@:4})
 ps_run=$(cd $(dirname $0)/../container/ps-run && pwd)
 
-echo $ps_run
-
+dyno_user="u0"
 dyno_dir=$LXC_DIR/$dyno_id
 
 if [ -d $dyno_dir ]; then
   rm -fr "$dyno_dir"
 fi
-
-echo "Creating $dyno_dir"
 mkdir -p $dyno_dir/rootfs
 
 (
 cd $dyno_dir/rootfs
-mkdir -p root/ps-run root/sockets proc sys usr etc/ssl etc/alternatives sbin bin lib lib64 
+mkdir -p root/ps-run root/sockets proc sys usr etc/ssl etc/alternatives sbin bin lib lib64 var
 
 cat <<EOF > etc/resolv.conf
 # Use host resolv.conf
@@ -47,7 +44,7 @@ cat <<EOF > etc/hosts
 EOF
 )
 
-echo "Setting up mounts"
+# Setting up mounts
 
 for mount in "${mounts[@]}"; do
   mount_point=${mount%%:*};
@@ -57,9 +54,10 @@ for mount in "${mounts[@]}"; do
   mkdir -p $dyno_dir/rootfs/$mount_point
 
   echo "Fetching $mount_url"
+  (
   cd "$dyno_dir/rootfs/$mount_point"
   restore-dir $mount_url
-  cd -
+  )
   
   # reset perms to devil uid/guid to avoid setuid/setgid attacks
   chown -R 1666.666 "$dyno_dir/rootfs/$mount_point"
@@ -67,7 +65,7 @@ for mount in "${mounts[@]}"; do
   chmod -R g-s "$dyno_dir/rootfs/$mount_point"
 done
 
-echo "Setting up devices"
+# Setting up devices
 
 dyno_temp_dir="$dyno_dir/rootfs/tmp"
 mkdir -p "$dyno_temp_dir"
@@ -160,7 +158,9 @@ none $dyno_dir/rootfs/dev/shm tmpfs defaults 0 0
 /lib $dyno_dir/rootfs/lib none bind 0 0
 /etc/ssl $dyno_dir/rootfs/etc/ssl none bind 0 0
 /etc/alternatives $dyno_dir/rootfs/etc/alternatives none bind 0 0
+/var $dyno_dir/rootfs/var none bind 0 0
 $ps_run $dyno_dir/rootfs/root/ps-run none bind 0 0
+$socket_dir $dyno_dir/rootfs/root/sockets none bind 0 0
 FSCONFIG
 
 # Only mount /lib64 on 64bit machines
@@ -174,7 +174,4 @@ fi
 
 cp container/etc/profile $dyno_dir/rootfs/etc
 
-echo "Starting dyno"
-cp bin/run-dyno $dyno_dir/rootfs
-cd $dyno_dir/rootfs/working
 lxc-start --name $dyno_id --logpriority DEBUG --rcfile $LXC_DIR/$dyno_id/config /root/ps-run/nodeboot $run_command

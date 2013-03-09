@@ -1,10 +1,65 @@
 #!/usr/bin/env ruby
 
-require 'pty'
-require 'rubygems'
+require 'thread'
+require 'socket'
+require 'open3'
 
-STDIN.sync = true
-STDOUT.sync = true
+Thread.abort_on_exception = true
+
+class BufferedSocketIO
+  def initialize(socket)
+    @socket = socket
+    @q_in = Queue.new
+    @q_out = Queue.new
+
+    connect
+
+    Thread.new { reader }
+    Thread.new { writer }
+  end
+
+  def gets
+    @q_in.pop
+  end
+
+  def puts(string)
+    @q_out.push(string)
+  end
+
+  def reader
+    loop do
+      begin
+        if incoming = $s.gets
+          @q_in.push incoming
+        end
+      rescue Errno::EPIPE
+        connect
+      end
+    end
+  end
+
+  def writer
+    loop do
+      begin
+        outgoing = @q_out.pop
+        $s.puts outgoing
+      rescue Errno::EPIPE
+        connect
+      end
+    end
+  end
+
+  def connect
+    begin
+      $s = UNIXSocket.open(@socket)
+    rescue Errno::ECONNREFUSED
+      sleep 1
+      retry
+    end
+  end
+end
+
+buf = BufferedSocketIO.new('/root/sockets/io.sock')
 
 Process::Sys.setgid(666)
 Process::Sys.setuid(1666)
@@ -21,10 +76,23 @@ env = {
   'RAM' => ENV['RAM'],
 }
 
-pid = Process.spawn(
-  env,
-  ARGV.join(' '),
-  unsetenv_others: true,
-  chdir: '/working',
-)
-Process.wait
+Open3.popen2(
+    env,
+    ARGV.join(' '),
+    unsetenv_others: true,
+    chdir: '/working',
+    :err => [:child, :out]) do |stdin, stdout, wait|
+  begin
+    Thread.new do
+      while line_in = buf.gets
+        stdin.puts line_in.strip
+      end
+    end
+
+    while line_out = stdout.readline
+      buf.puts line_out
+    end
+  rescue EOFError
+  end
+  exit_status = wait.value
+end

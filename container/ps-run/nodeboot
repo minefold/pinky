@@ -1,6 +1,6 @@
 #!/bin/bash
 # reset
 
-gem install bundler --no-rdoc --no-ri
-
 exec /root/ps-run/ps-run $*
+
+# exec ls -la

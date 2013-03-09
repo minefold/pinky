@@ -6,7 +6,11 @@ import (
 	"os/exec"
 )
 
+var conf *PinkyConfig
+
 func main() {
+	conf = InitPinkyConfig()
+
 	// allocate 200 ports starting at 10000 with a 100 port gap
 	portPool := NewIntPool(10000, 200, 100, []int{})
 
@@ -28,12 +32,26 @@ func main() {
 		"SHARED_DIR=/shared",
 	}
 
-	fmt.Println(cmd.Env)
-
 	dyno := NewDyno(Uuid(), cmd, mounts)
 
+	go func() {
+		for line := range dyno.Stdout {
+			event, err := ParseServerEvent(line)
+			if err != nil {
+				panic(err)
+			} else {
+				switch event.Type() {
+				case "started":
+					dyno.Stdin <- []byte("stop\n")
+				}
+
+				fmt.Println(event.Map())
+			}
+
+		}
+	}()
+
 	dyno.Start()
-	dyno.Stop()
 }
 
 func Uuid() string {
