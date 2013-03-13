@@ -10,13 +10,19 @@ Vagrant::Config.run do |config|
 
   # config.vm.boot_mode = :gui
 
+
   (10000..12000).each do |port|
     config.vm.forward_port port, port
     config.vm.forward_port port, port, protocol: 'udp'
   end
 
   config.vm.provision :chef_solo do |chef|
-    chef.json = {}
+    chef.json = {
+      main: {
+        'access_key' => ENV['AWS_ACCESS_KEY'],
+        'secret_key' => ENV['AWS_SECRET_KEY'],
+      }
+    }
 
     chef.run_list = [
       "recipe[apt]",

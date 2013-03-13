@@ -174,4 +174,4 @@ fi
 
 cp container/etc/profile $dyno_dir/rootfs/etc
 
-lxc-start --name $dyno_id --logpriority DEBUG --rcfile $LXC_DIR/$dyno_id/config /root/ps-run/nodeboot $run_command
+exec lxc-start --name $dyno_id --logfile $LXC_DIR/$dyno_id.log -d --logpriority DEBUG --rcfile $LXC_DIR/$dyno_id/config /root/ps-run/nodeboot $run_command

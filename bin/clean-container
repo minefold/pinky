@@ -1,0 +1,7 @@
+#!/bin/bash
+
+dyno_id=$1
+
+lxc-stop -n "$dyno_id"
+sleep 1
+rm -rf $LXC_DIR/$dyno_id

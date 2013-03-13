@@ -74,6 +74,9 @@ func TestMachineTransitions(t *testing.T) {
 	m := StateMachine{
 		Actions: actions,
 		Events:  events,
+		// OnTransition: func(from MachineState, to MachineState) {
+		// 	t.Logf("State changed from", from.Name(), "to", to.Name())
+		// },
 	}
 	m.To(idle)
 

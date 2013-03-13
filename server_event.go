@@ -17,8 +17,8 @@ func (e *ServerEvent) Type() string {
 	return str
 }
 
-func (e *ServerEvent) Map() map[string]string {
-	doc := map[string]string{}
+func (e *ServerEvent) Map() map[string]interface{} {
+	doc := map[string]interface{}{}
 	for k, v := range *e {
 		if v != nil {
 			var str string

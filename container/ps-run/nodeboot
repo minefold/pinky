@@ -1,6 +1,7 @@
 #!/bin/bash
 # reset
 
-exec /root/ps-run/ps-run $*
+exec /root/ps-run/ps-run $* >/root/ps-run/out.err 2>&1
+echo "done $?" >>/root/ps-run/out.err 2>&1 
 
 # exec ls -la

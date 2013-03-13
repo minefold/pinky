@@ -56,3 +56,11 @@ execute "create build path" do
     chown vagrant /opt/funpacks
   }
 end
+
+template "/etc/profile.d/configurator.sh" do
+  owner  'root'
+  group  'root'
+  mode   0644
+  variables node[:main]
+end
+

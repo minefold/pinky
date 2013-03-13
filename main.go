@@ -2,14 +2,18 @@ package main
 
 import (
 	"fmt"
+	"github.com/whatupdave/dlog"
 	"os"
 	"os/exec"
+	"os/signal"
+	"syscall"
 )
 
 var conf *PinkyConfig
 
 func main() {
 	conf = InitPinkyConfig()
+	log := dlog.New(os.Stderr, map[string]interface{}{})
 
 	// allocate 200 ports starting at 10000 with a 100 port gap
 	portPool := NewIntPool(10000, 200, 100, []int{})
@@ -42,16 +46,35 @@ func main() {
 			} else {
 				switch event.Type() {
 				case "started":
-					dyno.Stdin <- []byte("stop\n")
+					// dyno.Stdin <- []byte("stop\n")
+					dyno.Stop()
 				}
 
-				fmt.Println(event.Map())
+				log := dlog.New(os.Stderr, map[string]interface{}{})
+				log.SortOrder([]string{"ts", "event"})
+				log.Output(event.Map())
 			}
 
 		}
 	}()
 
 	dyno.Start()
+
+	// trap signals
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGTERM)
+
+	// wait for signal
+	signal := <-sig
+	log.Output(map[string]interface{}{
+		"event":  "pinky_stopping",
+		"signal": signal,
+	})
+
+	// stop popping jobs
+	// jobPopper.Stop()
+	// 
+	// waitForNoWorkInProgress()	
 }
 
 func Uuid() string {

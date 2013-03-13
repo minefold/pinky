@@ -10,7 +10,7 @@ type DynoStarting struct {
 func (s *DynoStarting) Name() string { return "starting" }
 
 func (s *DynoStarting) Enter(m *StateMachine) {
-	go s.Dyno.startListener()
+	go s.Dyno.startListeners()
 	s.Dyno.startDyno()
 	if err := m.Event("started"); err != nil {
 		panic(err)

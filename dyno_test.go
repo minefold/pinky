@@ -4,5 +4,5 @@ import (
 	"testing"
 )
 
-func TestMachineTransitions(t *testing.T) {
+func TestDynoStartStop(t *testing.T) {
 }

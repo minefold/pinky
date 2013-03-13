@@ -37,6 +37,6 @@ end
 begin
   run "#{S3CURL} -- #{REMOTE} --silent --show-error | #{decompression}"
 rescue
-  run "#{S3CURL} -- #{REMOTE} --silent --show-error"
+  run "#{S3CURL} -- #{REMOTE} --silent --show-error | head -n10"
   raise
 end

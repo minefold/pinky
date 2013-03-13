@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"fmt"
 )
 
 type MachineState interface {
@@ -12,9 +11,10 @@ type MachineState interface {
 }
 
 type StateMachine struct {
-	State   MachineState
-	Actions Transitions
-	Events  Transitions
+	State        MachineState
+	Actions      Transitions
+	Events       Transitions
+	OnTransition func(MachineState, MachineState)
 }
 
 type Transition struct {
@@ -47,7 +47,9 @@ func (m *StateMachine) Event(name string) error {
 func (m *StateMachine) To(to MachineState) {
 	if m.State != nil {
 		m.State.Exit()
-		fmt.Println("State changed from", m.State.Name(), "to", to.Name())
+		if m.OnTransition != nil {
+			m.OnTransition(m.State, to)
+		}
 	}
 	m.State = to
 	if to != nil {

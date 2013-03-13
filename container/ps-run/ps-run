@@ -60,6 +60,7 @@ class BufferedSocketIO
 end
 
 buf = BufferedSocketIO.new('/root/sockets/io.sock')
+cmd = BufferedSocketIO.new('/root/sockets/command.sock')
 
 Process::Sys.setgid(666)
 Process::Sys.setuid(1666)
@@ -95,4 +96,5 @@ Open3.popen2(
   rescue EOFError
   end
   exit_status = wait.value
+  cmd.puts "exit #{exit_status}"
 end
