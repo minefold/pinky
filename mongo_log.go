@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"labix.org/v2/mgo"
-	"os"
 )
 
 type MongoLogger struct {
@@ -12,7 +11,7 @@ type MongoLogger struct {
 }
 
 func NewMongoLogger() (l *MongoLogger, err error) {
-	session, db, err := openMongoSession(os.Getenv("MONGO_URL"))
+	session, db, err := openMongoSession()
 	if err != nil {
 		return
 	}

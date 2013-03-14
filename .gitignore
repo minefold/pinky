@@ -2,3 +2,4 @@ pinky
 tmp
 .bundle
 .vagrant
+.ruby-version

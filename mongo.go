@@ -9,7 +9,8 @@ import (
 	"time"
 )
 
-func openMongoSession(mongoUrl string) (session *mgo.Session, db *mgo.Database, err error) {
+func openMongoSession() (session *mgo.Session, db *mgo.Database, err error) {
+	mongoUrl := os.Getenv("MONGO_URL")
 	if mongoUrl == "" {
 		mongoUrl = "mongodb://10.0.2.2:27017/minefold_development"
 	}
@@ -29,7 +30,7 @@ func openMongoSession(mongoUrl string) (session *mgo.Session, db *mgo.Database, 
 }
 
 func CountServers() (int, error) {
-	session, db, err := openMongoSession(os.Getenv("MONGO_URL"))
+	session, db, err := openMongoSession()
 	if err != nil {
 		return 0, err
 	}
@@ -40,7 +41,7 @@ func CountServers() (int, error) {
 
 func StoreBackupInMongo(serverId string,
 	url string, size int64, backupTime time.Time) (snapshotId bson.ObjectId, err error) {
-	session, db, err := openMongoSession(os.Getenv("MONGO_URL"))
+	session, db, err := openMongoSession()
 	if err != nil {
 		return
 	}

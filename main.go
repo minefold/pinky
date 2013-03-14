@@ -133,6 +133,11 @@ func startServer(serverId string, funpackId string, funpackUrl string,
 }
 
 func runBackups(stop chan bool, serverId string) {
+	plog.Info(map[string]interface{}{
+		"event":    "starting_periodic_backups",
+		"serverId": serverId,
+	})
+
 	ticker := time.NewTicker(15 * time.Minute)
 
 	for {
@@ -187,10 +192,6 @@ func processServerEvents(serverId string, events chan ServerEvent, attached bool
 
 	if hasWorld {
 		go runBackups(stopBackups, serverId)
-		plog.Info(map[string]interface{}{
-			"event":    "starting_periodic_backups",
-			"serverId": serverId,
-		})
 	} else {
 		plog.Info(map[string]interface{}{
 			"event":    "no_periodic_backups",
@@ -757,7 +758,7 @@ func main() {
 
 	serverRoot = os.Getenv("SERVERS_PATH")
 	if serverRoot == "" {
-		serverRoot, _ = filepath.Abs("tmp/servers")
+		serverRoot = "/tmp/servers"
 	}
 
 	// test redis connection

@@ -23,7 +23,7 @@ func assertNotEq(t *testing.T, msg string, actual, expected interface{}) {
 }
 
 func TestFirstSnapshot(t *testing.T) {
-	session, db, err := openMongoSession(os.Getenv("MONGO_URL"))
+	session, db, err := openMongoSession()
 	if err != nil {
 		t.Error(err)
 	}
@@ -68,7 +68,7 @@ func TestFirstSnapshot(t *testing.T) {
 }
 
 func TestSecondSnapshot(t *testing.T) {
-	session, db, err := openMongoSession(os.Getenv("MONGO_URL"))
+	session, db, err := openMongoSession()
 	if err != nil {
 		t.Error(err)
 	}
