@@ -113,10 +113,14 @@ func (s *Server) processStdout(c chan ServerEvent) {
 	defer stdout.Close()
 
 	r := bufio.NewReader(stdout)
-	line, isPrefix, err := r.ReadLine()
-
-	for err == nil && !isPrefix {
+	for {
+		var line []byte
+		line, err = Readln(r)
+		if err != nil {
+			break
+		}
 		event, parseErr := ParseServerEvent(line)
+
 		if parseErr == nil {
 			c <- event
 		} else {
@@ -127,15 +131,28 @@ func (s *Server) processStdout(c chan ServerEvent) {
 				"parseErr": parseErr,
 			})
 		}
-		line, isPrefix, err = r.ReadLine()
 	}
 
 	plog.Info(map[string]interface{}{
 		"event":    "server_stdout_exit",
 		"serverId": s.Id,
+		"err":      err,
 	})
 
 	close(c)
+}
+
+func Readln(r *bufio.Reader) ([]byte, error) {
+	var (
+		isPrefix bool  = true
+		err      error = nil
+		line, ln []byte
+	)
+	for isPrefix && err == nil {
+		line, isPrefix, err = r.ReadLine()
+		ln = append(ln, line...)
+	}
+	return ln, err
 }
 
 func fileExists(path string) bool {
@@ -343,7 +360,14 @@ func (s *Server) StartServerProcess(pidFile string) (pid int, err error) {
 	cmd.Env = append(cmd.Env, "PORT="+strconv.Itoa(s.Port))
 	cmd.Dir = s.workingPath()
 
-	go execWithOutput(cmd, os.Stdout, os.Stderr)
+	go func() {
+		err := execWithOutput(cmd, os.Stdout, os.Stderr)
+		if err != nil {
+			plog.Error(err, map[string]interface{}{
+				"event": "buffer-process_failed",
+			})
+		}
+	}()
 
 	err = retry(50, 100*time.Millisecond, func(retries int) error {
 		var err error

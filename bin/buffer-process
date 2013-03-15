@@ -164,5 +164,5 @@ ensure
   $log.puts "cleaning up"
   `rm -f #{pid_file}` if pid_file
   `rm -f #{pipe_stdin_file}`
-  `rm -f #{pipe_stdout_file}`
+  # `rm -f #{pipe_stdout_file}`
 end

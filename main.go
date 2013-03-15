@@ -393,7 +393,7 @@ func kickPlayer(serverId string, username string, message string) {
 
 func removeServerArtifacts(serverId string) {
 	exec.Command("rm", "-f", pidFile(serverId)).Run()
-	exec.Command("rm", "-rf", serverPath(serverId)).Run()
+	// exec.Command("rm", "-rf", serverPath(serverId)).Run()
 
 	redisClient.Del(
 		fmt.Sprintf("pinky:%s:servers:%s", boxId, serverId))
