@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 )
 
-type ServerEvent map[string]*json.RawMessage
+type ServerEvent map[string]interface{}
 
 func ParseServerEvent(line []byte) (event ServerEvent, err error) {
 	err = json.Unmarshal(line, &event)
@@ -12,19 +12,5 @@ func ParseServerEvent(line []byte) (event ServerEvent, err error) {
 }
 
 func (e *ServerEvent) Type() string {
-	var str string
-	json.Unmarshal(*(*e)["event"], &str)
-	return str
-}
-
-func (e *ServerEvent) Map() map[string]string {
-	doc := map[string]string{}
-	for k, v := range *e {
-		if v != nil {
-			var str string
-			json.Unmarshal(*v, &str)
-			doc[k] = str
-		}
-	}
-	return doc
+	return (*e)["event"].(string)
 }
