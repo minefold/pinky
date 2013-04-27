@@ -40,7 +40,7 @@ var (
 	serverRoot  string
 	wipGen      *WipGenerator
 	portPool    chan int
-	plog        DataLogger // pinky logger	
+	plog        DataLogger // pinky logger
 	jobPopper   *JobPopper
 	mlog        *MongoLogger
 )
@@ -347,13 +347,13 @@ func stopServer(serverId string) {
 			"reason":   "server not found",
 			"serverId": serverId,
 		})
-		pushPinkyEvent(map[string]interface{}{
-			"ts":        time.Now(),
-			"server_id": serverId,
-			"event":     "server_event",
-			"type":      "stopped",
-		})
 	}
+	pushPinkyEvent(map[string]interface{}{
+		"ts":        time.Now(),
+		"server_id": serverId,
+		"event":     "server_event",
+		"type":      "stopped",
+	})
 }
 
 func ServerOp(serverId string, name string, op func(*Server)) {
