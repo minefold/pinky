@@ -292,16 +292,19 @@ func (s *Server) Writeln(line string) error {
 	// if we open stdin and there's no reader (ie. the process is dead)
 	// the open call will hang. So after a timeout we open the file for reading
 	// then return an error
-	timeout := time.NewTimer(100 * time.Millisecond)
+	timeout := time.NewTimer(5 * time.Second)
 	cancelTimeout := make(chan bool, 0)
 	go func() {
 		select {
 		case <-timeout.C:
-    	s.Log.Error(errors.New("timeout"), map[string]interface{}{
-    		"event":  "writing_stdin",
-        "action": "opening reader",
-    	})
-			os.Open(s.stdinPath())
+			s.Log.Error(errors.New("timeout"), map[string]interface{}{
+				"event":  "writing_stdin",
+				"action": "opening reader",
+			})
+			f, err := os.Open(s.stdinPath())
+			if err == nil {
+				f.Close()
+			}
 
 		case <-cancelTimeout:
 		}
