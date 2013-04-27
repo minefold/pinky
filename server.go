@@ -230,6 +230,10 @@ func waitFor(duration time.Duration, test func() bool) bool {
 }
 
 func (s *Server) EnsureServerStopped() {
+	if s.Proc == nil {
+		return
+	}
+
 	if s.Proc.WaitForExit(60 * time.Second) {
 		return
 	}
@@ -293,7 +297,7 @@ func (s *Server) Writeln(line string) error {
 	// the open call will hang. So after a timeout we open the file for reading
 	// then return an error
 	timeout := time.NewTimer(5 * time.Second)
-	cancelTimeout := make(chan bool, 0)
+	cancelTimeout := make(chan bool, 1)
 	go func() {
 		select {
 		case <-timeout.C:
@@ -312,6 +316,8 @@ func (s *Server) Writeln(line string) error {
 
 	stdin, err := os.OpenFile(
 		s.stdinPath(), syscall.O_WRONLY|syscall.O_APPEND, 0x0)
+
+	cancelTimeout <- true
 
 	if err != nil {
 		return err
