@@ -4,7 +4,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"syscall"
 	"testing"
+	"time"
 )
 
 // Creates and changes into dir, executes work, changes back
@@ -71,5 +73,39 @@ func TestStartAndStop(t *testing.T) {
 		t.Errorf("want %q, got %q", "started", ev.Type())
 	}
 
+	s.Stop()
+}
+
+func TestStopDeadServer(t *testing.T) {
+	plog = NewLog(map[string]interface{}{})
+	root := setupTestPack()
+
+	s := &Server{
+		Id:    "test-server",
+		Path:  root,
+		Log:   plog,
+		State: "starting",
+	}
+
+	_, err := s.StartServerProcess(filepath.Join(root, "server.pid"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	events, err := s.Monitor()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ev := <-events
+
+	if ev.Type() != "started" {
+		t.Errorf("want %q, got %q", "started", ev.Type())
+	}
+
+	s.Kill(syscall.SIGKILL)
+	if !s.Proc.WaitForExit(10 * time.Second) {
+		t.Fatal("Process didn't die.")
+	}
 	s.Stop()
 }

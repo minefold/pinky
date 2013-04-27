@@ -39,7 +39,7 @@ execute "chown go dir" do
 end
 
 # install java
-package 'python-software-properties'
+package 'software-properties-common'
 
 execute "apt-get purge openjdk*" do
   command "apt-get purge openjdk*"

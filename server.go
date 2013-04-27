@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -26,6 +27,8 @@ type Server struct {
 	Log       DataLogger
 	State     string
 	FunpackId string
+
+	mu sync.Mutex
 }
 
 type ServerSettings struct {
@@ -263,9 +266,10 @@ func (s *Server) EnsureServerStopped() {
 }
 
 func (s *Server) Stop() {
-	// TODO this hangs if server is stopped
-	s.Writeln("stop")
-	s.EnsureServerStopped()
+	if s.atomicStateChange("up", "stopping") || s.atomicStateChange("starting", "stopping") {
+		s.Writeln("stop")
+		s.EnsureServerStopped()
+	}
 }
 
 func (s *Server) Broadcast(message string) {
@@ -285,6 +289,24 @@ func (s *Server) ListPlayers() {
 }
 
 func (s *Server) Writeln(line string) error {
+	// if we open stdin and there's no reader (ie. the process is dead)
+	// the open call will hang. So after a timeout we open the file for reading
+	// then return an error
+	timeout := time.NewTimer(100 * time.Millisecond)
+	cancelTimeout := make(chan bool, 0)
+	go func() {
+		select {
+		case <-timeout.C:
+    	s.Log.Error(errors.New("timeout"), map[string]interface{}{
+    		"event":  "writing_stdin",
+        "action": "opening reader",
+    	})
+			os.Open(s.stdinPath())
+
+		case <-cancelTimeout:
+		}
+	}()
+
 	stdin, err := os.OpenFile(
 		s.stdinPath(), syscall.O_WRONLY|syscall.O_APPEND, 0x0)
 
@@ -294,6 +316,7 @@ func (s *Server) Writeln(line string) error {
 	defer stdin.Close()
 
 	stdin.WriteString(line + "\n")
+
 	return nil
 }
 
@@ -334,7 +357,6 @@ func (s *Server) WriteDataFile(data string) error {
 }
 
 func (s *Server) StartServerProcess(pidFile string) (pid int, err error) {
-	// TODO run Procfile instead of bin/run
 	command := filepath.Join(s.Path, "funpack", "bin", "run")
 	bufferCmd, _ := filepath.Abs("bin/buffer-process")
 
@@ -511,6 +533,16 @@ func (s *Server) funpackCmd(bin string, args ...string) *exec.Cmd {
 	cmd.Dir = s.workingPath()
 
 	return cmd
+}
+
+func (s *Server) atomicStateChange(from, to string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.State == from {
+		s.State = to
+		return true
+	}
+	return false
 }
 
 func (s *Server) backupPaths() ([]string, error) {

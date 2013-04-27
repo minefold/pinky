@@ -203,6 +203,7 @@ func processServerEvents(serverId string, events chan ServerEvent, attached bool
 
 	server := servers.Get(serverId)
 
+  // TODO move custom event handling into server object
 	for event := range events {
 		switch event.Type() {
 		case "started":
@@ -210,6 +211,7 @@ func processServerEvents(serverId string, events chan ServerEvent, attached bool
 		case "stopping":
 			if server.State != "stopping" {
 				server.State = "stopping"
+        go server.EnsureServerStopped()
 				stopWip = <-wipGen.C
 			}
 		case "fatal_error":
