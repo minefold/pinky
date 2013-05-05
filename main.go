@@ -343,13 +343,13 @@ func stopServer(serverId string) {
 
 		server.Stop()
 	} else {
-		removeServerArtifacts(serverId)
 		plog.Info(map[string]interface{}{
 			"event":    "stop_request_ignored",
 			"reason":   "server not found",
 			"serverId": serverId,
 		})
 	}
+	removeServerArtifacts(serverId)
 	pushPinkyEvent(map[string]interface{}{
 		"ts":        time.Now(),
 		"server_id": serverId,
