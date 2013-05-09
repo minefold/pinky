@@ -203,7 +203,7 @@ func processServerEvents(serverId string, events chan ServerEvent, attached bool
 
 	server := servers.Get(serverId)
 
-  // TODO move custom event handling into server object
+	// TODO move custom event handling into server object
 	for event := range events {
 		switch event.Type() {
 		case "started":
@@ -211,7 +211,7 @@ func processServerEvents(serverId string, events chan ServerEvent, attached bool
 		case "stopping":
 			if server.State != "stopping" {
 				server.State = "stopping"
-        go server.EnsureServerStopped()
+				go server.EnsureServerStopped()
 				stopWip = <-wipGen.C
 			}
 		case "fatal_error":
@@ -749,12 +749,21 @@ func main() {
 		fmt.Println("ERMAHGERD FERTEL ERRERRRR! ಠ_ಠ")
 		panic(r)
 	}
+	plog.Out("info", map[string]interface{}{
+		"event": "connecting_to_mongo",
+		"url":   os.Getenv("MONGO_URL"),
+	})
+
 	var err error
 	mlog, err = NewMongoLogger()
 	if err != nil {
 		panic(fmt.Sprintf("Failed to init MongoLogger: %v", err))
 	}
 	defer mlog.Close()
+
+	plog.Out("info", map[string]interface{}{
+		"event": "connected",
+	})
 
 	wipGen = NewWipGenerator()
 
