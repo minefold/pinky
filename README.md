@@ -59,7 +59,7 @@ Example:
   - server_id
   - user_id
   - message
-  
+
 ## Paths
 
 $SERVERS (typically /mnt/servers)
@@ -89,11 +89,11 @@ $SERVERS/1234/backup    (ditto)
 * Watch for stdout lines (should be JSON)
 
 .
-    
+
     event=started at=234897
     { at: ISO-6601, event: started, ... }
-    
-    
+
+
     EVENT TYPES
       started
       stopping
@@ -101,7 +101,7 @@ $SERVERS/1234/backup    (ditto)
       player_disconnected
       chatted
       * connected_players
-    
+
       settings_changed { type: 'opped', actor_playername: 'whatupdave',
                             target_playername: 'chrislloyd'
         opped
@@ -110,7 +110,7 @@ $SERVERS/1234/backup    (ditto)
         whitelist_removed
         banned
         pardoned
-    
+
       info          { event: info, msg: 'bukkit outta date yall'}
       warning       { event: warning, type: 'stressed' }
       critical      { event: critical,
@@ -154,7 +154,7 @@ $SERVERS/1234/backup    (ditto)
     server:1234:state (starting|up|down)
 
     pinky:1:heartbeat # Updated every 10 seconds with 30 second timeout
-    
+
 
 ## Example Jobs
 
@@ -172,9 +172,15 @@ recover backups not working (s3 down?)
 
 ## Handy commands
 
+    ps -eF | grep [j]ava | awk '{print $2}' | sudo xargs pwdx
+    ps -eF | grep [j]ava | awk '{print $2}' | sudo xargs pwdx | grep 50bd4bb4105d670e01000001 | cut -d: -f1 | xargs sudo kill
+    sudo lsof
+    sudo lsof | awk '{ print $2; }' | uniq -c | sort -rn | head
 
-ps -eF | grep [j]ava | awk '{print $2}' | sudo xargs pwdx
-ps -eF | grep [j]ava | awk '{print $2}' | sudo xargs pwdx | grep 50bd4bb4105d670e01000001 | cut -d: -f1 | xargs sudo kill
+    ls -l /mnt/md0/pinky/servers/*.pid | sed 's/\(.*\)\([0-9a-z]\{24\}\)\(.*\)/\2/'
+    ps -eF | grep [j]ava | awk '{print $2}' | sudo xargs pwdx | sed 's/\(.*\)\([0-9a-z]\{24\}\)\(.*\)/\2/'
 
-sudo lsof
-sudo lsof | awk '{ print $2; }' | uniq -c | sort -rn | head
+    comm -1 -3 <( \
+      ls -l /mnt/md0/pinky/servers/*.pid | sed 's/\(.*\)\([0-9a-z]\{24\}\)\(.*\)/\2/' | sort) <( \
+      ps -eF | grep [j]ava | awk '{print $2}' | sudo xargs pwdx | sed 's/\(.*\)\([0-9a-z]\{24\}\)\(.*\)/\2/' | sort)
+
