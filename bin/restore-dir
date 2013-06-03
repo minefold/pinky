@@ -34,9 +34,13 @@ def run cmd
   raise "Failed: '#{cmd}'" unless success
 end
 
+tries = 0
 begin
   run "#{S3CURL} -- #{REMOTE} --silent --show-error | #{decompression}"
 rescue
-  run "#{S3CURL} -- #{REMOTE} --silent --show-error"
+  tries += 1
+  retry if tries <= 5
+
+  run "#{S3CURL} -- #{REMOTE} --silent --show-error | head -n50"
   raise
 end
