@@ -1,0 +1,7 @@
+#!/bin/bash
+ps -eF | grep [j]ava | awk '{print $2}' | sudo xargs pwdx | grep del | cut -d: -f1 | xargs sudo kill -9
+comm -1 -3 <( \
+  ls -l /mnt/md0/pinky/servers/*.pid | sed 's/\(.*\)\([0-9a-z]\{24\}\)\(.*\)/\2/' | sort) <( \
+  ps -eF | grep [j]ava | awk '{print $2}' | sudo xargs pwdx | sed 's/\(.*\)\([0-9a-z]\{24\}\)\(.*\)/\2/' | sort) | while read line; do
+  ps -eF | grep [j]ava | awk '{print $2}' | sudo xargs pwdx | grep $line | cut -d: -f1 | xargs sudo kill -9
+done

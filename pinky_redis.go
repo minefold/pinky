@@ -7,7 +7,7 @@ import (
 )
 
 func NewRedisConnection() *redis.Client {
-	urlString := os.Getenv("REDIS_URL")
+	urlString := os.Getenv("PARTY_CLOUD_REDIS")
 	if urlString == "" {
 		urlString = "redis://10.0.2.2:6379"
 	}
